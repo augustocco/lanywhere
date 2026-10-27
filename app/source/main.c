@@ -312,6 +312,52 @@ static void list_thread(void *arg)
 #define SIDE_W      (GFX_W - SIDE_X - MARGIN)
 #define FOOTER_Y    (GFX_H - 72)
 
+// Zonas táctiles del último fotograma: tocar una equivale a pulsar su botón del mando.
+typedef struct { int x, y, w, h; u64 button; } TouchZone;
+static TouchZone g_zones[8];
+static int g_zone_count;
+
+// Botón del mando según la letra que se dibuja ("−" para Minus).
+static u64 button_mask(const char *label)
+{
+    switch (label[0]) {
+    case 'A': return HidNpadButton_A;
+    case 'B': return HidNpadButton_B;
+    case 'X': return HidNpadButton_X;
+    case 'Y': return HidNpadButton_Y;
+    case '+': return HidNpadButton_Plus;
+    default:  return HidNpadButton_Minus;
+    }
+}
+
+static void add_zone(int x, int y, int w, int h, u64 button)
+{
+    if (g_zone_count < (int)(sizeof(g_zones) / sizeof(g_zones[0])))
+        g_zones[g_zone_count++] = (TouchZone){ x, y, w, h, button };
+}
+
+// Botón del mando que corresponde a un toque nuevo en la pantalla (al levantar el dedo), o 0.
+static u64 touch_button(void)
+{
+    static bool was_down;
+    static u32 last_x, last_y;
+    HidTouchScreenState ts = {0};
+    bool down = hidGetTouchScreenStates(&ts, 1) && ts.count > 0;
+    u64 pressed = 0;
+    if (down) {
+        last_x = ts.touches[0].x;
+        last_y = ts.touches[0].y;
+    } else if (was_down) {
+        for (int i = 0; i < g_zone_count; i++) {
+            const TouchZone *z = &g_zones[i];
+            if ((int)last_x >= z->x && (int)last_x < z->x + z->w && (int)last_y >= z->y && (int)last_y < z->y + z->h)
+                pressed = z->button;
+        }
+    }
+    was_down = down;
+    return pressed;
+}
+
 typedef struct {
     LanywhereStatus st;
     LanywhereGroup groups[MAX_GROUPS];
@@ -484,12 +530,15 @@ static void side_column(const View *v)
     gfx_text_fit(x + 24, y + 54, 18, C_DIM, v->private_room ? TR("Solo en la sala privada", "Only in the private room") :
                  v->pub ? TR("Para todo el mundo", "To everyone") : TR("Solo en la red local", "Only on the local network"), SIDE_W - 120);
     toggle(x + SIDE_W - 24 - 56, y + 33, v->pub && !v->private_room);
+    if (!v->private_room)
+        add_zone(x, y, SIDE_W, 96, HidNpadButton_X);  // el panel entero cambia la visibilidad
 }
 
 static void draw(const View *v)
 {
     gfx_begin();
     gfx_clear_gradient(C_BG_TOP, C_BG_BOTTOM);
+    g_zone_count = 0;
 
     gfx_text(MARGIN, 36, 40, C_TEXT, "LANywhere");
     gfx_text(MARGIN, 86, 20, C_DIM, TR("Tu multijugador local, ahora en línea", "Your local multiplayer, online"));
@@ -519,8 +568,11 @@ static void draw(const View *v)
     for (int i = 0; i < n; i++)
         total += 30 + 10 + gfx_text_width(22, labels[i]) + (i ? 28 : 0);
     int x = GFX_W - MARGIN - total;
-    for (int i = 0; i < n; i++)
-        x += gfx_button(x, FOOTER_Y + 20, buttons[i], labels[i]) + 28;
+    for (int i = 0; i < n; i++) {
+        int w = gfx_button(x, FOOTER_Y + 20, buttons[i], labels[i]);
+        add_zone(x - 10, FOOTER_Y + 8, w + 20, 56, button_mask(buttons[i]));  // algo más grande que el dibujo, para el dedo
+        x += w + 28;
+    }
 
     gfx_end();
 }
@@ -579,11 +631,13 @@ static void no_service(PadState *pad)
     gfx_text(MARGIN + 28, 222, 22, C_DIM, TR("Copia la carpeta «atmosphere» del paquete en la raíz de la tarjeta SD", "Copy the \"atmosphere\" folder from the package to the root of the SD card"));
     gfx_text(MARGIN + 28, 254, 22, C_DIM, TR("y reinicia la consola.", "and restart the console."));
     gfx_rect(0, FOOTER_Y, GFX_W, 1, C_LINE);
-    gfx_button(GFX_W - MARGIN - 120, FOOTER_Y + 20, "+", TR("Salir", "Exit"));
+    g_zone_count = 0;
+    int w = gfx_button(GFX_W - MARGIN - 120, FOOTER_Y + 20, "+", TR("Salir", "Exit"));
+    add_zone(GFX_W - MARGIN - 130, FOOTER_Y + 8, w + 20, 56, HidNpadButton_Plus);
     gfx_end();
     while (appletMainLoop()) {
         padUpdate(pad);
-        if (padGetButtonsDown(pad) & HidNpadButton_Plus)
+        if ((padGetButtonsDown(pad) | touch_button()) & HidNpadButton_Plus)
             break;
         svcSleepThread(33000000ULL);
     }
@@ -596,6 +650,7 @@ int main(int argc, char **argv)
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
     padInitializeDefault(&pad);
+    hidInitializeTouchScreen();
     detect_language();
     if (!gfx_init())
         return 1;
@@ -622,7 +677,7 @@ int main(int argc, char **argv)
     bool dirty = true;
     while (appletMainLoop()) {
         padUpdate(&pad);
-        u64 down = padGetButtonsDown(&pad);
+        u64 down = padGetButtonsDown(&pad) | touch_button();
         if (down & HidNpadButton_Plus)
             break;
 
