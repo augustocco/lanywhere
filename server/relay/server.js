@@ -5,7 +5,9 @@
 // Variables de entorno:
 //   LANYWHERE_CAP_GB      tráfico de salida máximo al mes (GB; por defecto 8000). Al
 //                    llegar, el servidor se pone en pausa hasta el mes siguiente (UTC).
-//   LANYWHERE_STATE_DIR   dónde guardar el contador de tráfico (por defecto, la carpeta del servidor).
+//   LANYWHERE_STATE_DIR   dónde guardar el contador de tráfico y la historia del panel (por defecto, la carpeta del
+//                    servidor).
+//   LANYWHERE_STATS_PORT  puerto del panel de actividad, solo en 127.0.0.1 (por defecto 11461; 0 lo desactiva).
 
 const fs = require('fs');
 const path = require('path');
@@ -36,6 +38,7 @@ const LIMITS = {
 };
 const CAP_BYTES = (Number(process.env.LANYWHERE_CAP_GB) || 8000) * 1e9;
 const STATE_FILE = path.join(process.env.LANYWHERE_STATE_DIR || __dirname, 'traffic.json');
+const STATS_PORT = process.env.LANYWHERE_STATS_PORT === undefined ? 11461 : Number(process.env.LANYWHERE_STATS_PORT);
 const UDP_OVERHEAD = 28, TCP_OVERHEAD = 52;  // cabeceras IP/UDP e IP/TCP: también cuentan como tráfico
 
 const T = { CREATE: 0x01, JOIN: 0x02, LEAVE: 0x03, RELAY: 0x04, PING: 0x05, RESUME: 0x06, PUBLISH: 0x07, FIND: 0x08,
@@ -47,7 +50,12 @@ const LDN_SCAN_RESP = 2, LDN_SYNC = 4;
 const rooms = new Map();    // código → { code, gameId, members: Array(8), published }
 const byToken = new Map();  // token → miembro
 
-const log = (...a) => console.log(new Date().toISOString(), ...a);
+// Panel de actividad (stats.js): hasta que arranca, no cuenta nada.
+let stats = { count() {}, event() {}, noteSearch() {}, save() {} };
+const log = (...a) => {
+    console.log(new Date().toISOString(), ...a);
+    stats.event(a.join(' '));
+};
 const ipOf = (index) => (NET_BASE | (index + 1)) >>> 0;
 const ipStr = (ip) => [ip >>> 24, (ip >>> 16) & 255, (ip >>> 8) & 255, ip & 255].join('.');
 const plainIp = (a) => (a || '').replace(/^::ffff:/, '');
@@ -80,6 +88,7 @@ function cleanNick(raw, fallbackSeed) {
     const flat = normalizeForFilter(s);
     const offensive = BAD_WORDS.some((w) => flat.includes(w));
     if ([...s].length < 2 || offensive) {
+        stats.count('nicksFiltered');
         const n = 1000 + (fallbackSeed % 9000);
         return `Jugador ${n}`;
     }
@@ -165,7 +174,9 @@ function allowed(ip, kind) {
     const key = `${ip}:${kind}`;
     let b = buckets.get(key);
     if (!b || b.minute !== minute) buckets.set(key, (b = { minute, n: 0 }));
-    return ++b.n <= LIMITS.perMinute[kind];
+    if (++b.n <= LIMITS.perMinute[kind]) return true;
+    stats.count('rateLimited');
+    return false;
 }
 
 setInterval(() => {
@@ -225,6 +236,7 @@ function join(socket, room, nickname) {
     socket.member = member;
     sendRoom(member);
     for (const m of others(room, member)) send(m.socket, T.MEMBER_JOINED, memberBuf(member));
+    stats.count('joins');
     log(`sala ${room.code}: entra ${member.nick} (${ipStr(member.ip)}), ${room.members.filter(Boolean).length} miembros`);
 }
 
@@ -267,7 +279,10 @@ function leave(member, why) {
 function onFrame(socket, type, body) {
     const member = socket.member;
     const ip = plainIp(socket.remoteAddress);
-    if (paused && type !== T.LEAVE && type !== T.PING) return sendError(socket, E.PAUSED, PAUSED_TEXT);
+    if (paused && type !== T.LEAVE && type !== T.PING) {
+        stats.count('pausedRejects');
+        return sendError(socket, E.PAUSED, PAUSED_TEXT);
+    }
     switch (type) {
         case T.CREATE: {
             if (member || body.length < 8 + 32) return sendError(socket, E.BAD_REQUEST, 'CREATE no válido');
@@ -275,6 +290,7 @@ function onFrame(socket, type, body) {
                 return sendError(socket, E.BUSY, 'demasiadas salas; prueba en un momento');
             const room = { code: newCode(), gameId: body.readBigUInt64LE(0), members: new Array(MAX_MEMBERS).fill(null), published: null };
             rooms.set(room.code, room);
+            stats.count('roomsCreated');
             log(`sala ${room.code} creada (juego ${room.gameId.toString(16)})`);
             return join(socket, room, nick(body.subarray(8, 40)));
         }
@@ -301,6 +317,7 @@ function onFrame(socket, type, body) {
             old.udp = null;     // y hay que volver a registrar el UDP desde ella
             socket.member = old;
             sendRoom(old);
+            stats.count('resumes');
             log(`sala ${old.room.code}: vuelve ${old.nick} (${ipStr(old.ip)})`);
             return;
         }
@@ -327,12 +344,15 @@ function onFrame(socket, type, body) {
             } else if (body.length === NETWORK_INFO_SIZE) {
                 const first = !member.room.published;
                 member.room.published = { member, info: sanitizeNetworkInfo(member.room, body), lcid: body.readBigUInt64LE(0) };
+                if (first) stats.count('groupsPublished');
                 if (first) log(`sala ${member.room.code}: grupo publicado (juego ${member.room.published.lcid.toString(16)})`);
             }
             return;
         }
         case T.FIND: {
             if (!allowed(ip, 'find')) return send(socket, T.GROUPS, Buffer.from([0]));
+            stats.count('finds');
+            stats.noteSearch(ip);
             // Grupos abiertos de un juego (0: todos), con sitio libre; los que tienen más gente primero. Con un código
             // después del juego (el grupo elegido en la app), ese va el primero aunque haya muchos.
             const lcid = body.length >= 8 ? body.readBigUInt64LE(0) : 0n;
@@ -419,8 +439,32 @@ udp.on('message', (msg, rinfo) => {
 });
 
 loadTraffic();
+
+// Lo que muestra el panel en cada momento: consolas conectadas (miembros de salas con su conexión abierta), salas,
+// grupos abiertos y jugadores por juego.
+function snapshot() {
+    let online = 0, privateRooms = 0, groups = 0, players = 0;
+    const byGame = new Map();
+    for (const r of rooms.values()) {
+        online += r.members.filter((m) => m && m.socket).length;
+        if (r.gameId === 0n) privateRooms++;
+        if (!r.published) continue;
+        const n = r.published.info[0x67];
+        groups++;
+        players += n;
+        const key = r.published.lcid.toString(16).padStart(16, '0');
+        const g = byGame.get(key) || { game: key, groups: 0, players: 0 };
+        g.groups++;
+        g.players += n;
+        byGame.set(key, g);
+    }
+    return { online, rooms: rooms.size, privateRooms, groups, players,
+             byGame: [...byGame.values()].sort((a, b) => b.players - a.players) };
+}
+stats = require('./stats').create({ stateDir: path.dirname(STATE_FILE), port: STATS_PORT, snapshot, traffic,
+                                    capBytes: CAP_BYTES, paused: () => paused });
 setInterval(() => { checkMonth(); saveTraffic(); }, 60000).unref();
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { saveTraffic(); process.exit(0); });
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { saveTraffic(); stats.save(); process.exit(0); });
 
 tcp.listen(PORT, () => log(`control TCP en ${PORT}; tráfico del mes ${(traffic.bytes / 1e9).toFixed(2)} GB de ${CAP_BYTES / 1e9} GB`));
 udp.bind(PORT, () => log(`datos UDP en ${PORT}`));

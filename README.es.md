@@ -120,6 +120,20 @@ Para instalarlo como servicio en una Ubuntu (con acceso por SSH con clave):
 Instala Node.js si falta y deja el servidor como servicio systemd aislado (sin privilegios), con parches de seguridad
 automáticos. Recomendado: permitir SSH solo desde tu IP.
 
+### Panel de actividad
+
+El servidor trae un panel con la actividad: consolas conectadas, salas, grupos abiertos por juego, tráfico del mes
+frente al tope, gráficas de las últimas 24 horas y de los últimos 30 días, contadores y actividad reciente. Solo
+escucha dentro del servidor (`127.0.0.1:11461`), así que no se abre ningún puerto nuevo; se ve desde tu PC con un
+túnel SSH:
+
+```powershell
+.\scripts\panel.ps1 -VmHost <IP de la VM> -Key $HOME\.ssh\mi_clave
+```
+
+Todo es agregado: ni IPs ni datos personales (solo apodos y códigos de sala). Para ver nombres en lugar de ids de
+juego, crea `games.json` en el directorio de estado, por ejemplo `{"0100000000ABC000": "Mi juego"}`.
+
 ## Compilar
 
 Con [devkitPro](https://devkitpro.org) (devkitA64 y libnx):

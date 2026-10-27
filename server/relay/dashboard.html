@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LANywhere: panel</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%238b5cf6'/%3E%3Ccircle cx='8' cy='9.5' r='3.5' fill='none' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f121c; --surface: #161b2a; --surface-2: #1d2336; --line: #2a3147;
+    --text: #f2f3f7; --text-2: #b3b8c6; --muted: #7d8497;
+    --accent: #8b5cf6; --accent-soft: rgba(139, 92, 246, 0.18);
+    --good: #34c759; --warn: #f5a524; --bad: #f04a4a;
+    --radius: 14px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f5f8; --surface: #ffffff; --surface-2: #f0f1f5; --line: #e1e3ea;
+      --text: #1b1f2a; --text-2: #4a5163; --muted: #7a8193;
+      --accent: #6d3fe0; --accent-soft: rgba(109, 63, 224, 0.14);
+      --good: #1f8f3e; --warn: #b26b00; --bad: #c62828;
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--muted); font-weight: 400; font-size: 16px; margin-left: 8px; }
+  h2 { font-size: 15px; margin: 0 0 12px; color: var(--text-2); font-weight: 600; }
+  .status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--surface); font-size: 14px; }
+  .status .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .updated { color: var(--muted); font-size: 13px; }
+  .grid { display: grid; gap: 16px; }
+  .tiles { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 16px; }
+  .two { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-bottom: 16px; }
+  .card { background: var(--surface); border-radius: var(--radius); padding: 18px; min-width: 0; }
+  .tile .value { font-size: 36px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .tile .label { color: var(--text-2); font-size: 14px; margin-top: 2px; }
+  .tile .sub { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .meter { height: 10px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin: 10px 0 6px; }
+  .meter > div { height: 100%; background: var(--accent); border-radius: 999px; }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .axis text { fill: var(--muted); font-size: 11px; }
+  .gridline { stroke: var(--line); stroke-width: 1; }
+  .tip { position: absolute; pointer-events: none; background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+         border-radius: 8px; padding: 6px 9px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -110%); display: none; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 0 8px 8px 0; }
+  td { padding: 7px 8px 7px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; }
+  .events { max-height: 360px; overflow: auto; }
+  .events td:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
+  .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+  details { margin-top: 10px; font-size: 13px; color: var(--text-2); }
+  details summary { cursor: pointer; color: var(--muted); }
+  .warnline { color: var(--warn); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>LANywhere <span>panel del servidor</span></h1>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span class="status" id="status"><span class="dot"></span><span>Cargando…</span></span>
+      <span class="updated" id="updated"></span>
+    </div>
+  </header>
+
+  <section class="grid tiles">
+    <div class="card tile"><div class="value" id="online">–</div><div class="label">Consolas en salas ahora</div><div class="sub" id="online-sub"></div></div>
+    <div class="card tile"><div class="value" id="searching">–</div><div class="label">Consolas buscando grupos</div><div class="sub">en los últimos 5 minutos</div></div>
+    <div class="card tile"><div class="value" id="rooms">–</div><div class="label">Salas activas</div><div class="sub" id="rooms-sub"></div></div>
+    <div class="card tile"><div class="value" id="groups">–</div><div class="label">Grupos abiertos</div><div class="sub" id="groups-sub"></div></div>
+  </section>
+
+  <section class="card" style="margin-bottom:16px">
+    <h2>Tráfico de salida del mes</h2>
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div><span class="tile"><span class="value" style="font-size:28px" id="traffic">–</span></span> <span style="color:var(--text-2)" id="traffic-cap"></span></div>
+      <div style="color:var(--muted);font-size:13px;align-self:flex-end" id="traffic-month"></div>
+    </div>
+    <div class="meter" role="meter" aria-label="Tráfico del mes respecto al tope" id="meter"><div id="meter-bar" style="width:0"></div></div>
+    <div class="warnline" id="traffic-warn"></div>
+  </section>
+
+  <section class="grid two">
+    <div class="card">
+      <h2>Consolas en salas, últimas 24 horas</h2>
+      <div class="chart" id="chart-online"></div>
+      <details><summary>Ver los datos</summary><div id="table-online"></div></details>
+    </div>
+    <div class="card">
+      <h2>Tráfico por día, últimos 30 días (GB)</h2>
+      <div class="chart" id="chart-traffic"></div>
+      <details><summary>Ver los datos</summary><div id="table-traffic"></div></details>
+    </div>
+  </section>
+
+  <section class="grid two">
+    <div class="card">
+      <h2>Juegos con grupos abiertos ahora</h2>
+      <div id="games"></div>
+    </div>
+    <div class="card">
+      <h2>Contadores</h2>
+      <div id="counters"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Actividad reciente</h2>
+    <div class="events" id="events"></div>
+  </section>
+</main>
+
+<script>
+const COUNTERS = [
+  ['roomsCreated', 'Salas creadas'],
+  ['groupsPublished', 'Grupos abiertos publicados'],
+  ['joins', 'Entradas en salas'],
+  ['resumes', 'Reconexiones (Wi-Fi cortado y recuperado)'],
+  ['finds', 'Búsquedas de grupos'],
+  ['nicksFiltered', 'Apodos filtrados'],
+  ['rateLimited', 'Peticiones frenadas por los límites'],
+  ['pausedRejects', 'Rechazos por el tope mensual'],
+];
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n || 0).toLocaleString('es');
+const gb = (b) => (b / 1e9);
+const gbText = (b) => b >= 1e9 ? gb(b).toLocaleString('es', { maximumFractionDigits: 2 }) + ' GB'
+                     : (b / 1e6).toLocaleString('es', { maximumFractionDigits: 1 }) + ' MB';
+const timeText = (t) => new Date(t).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+
+// Una serie: área + línea de 2px, eje Y con 4 marcas, cruceta y globo al pasar el ratón.
+function lineChart(el, points, { label, value, format }) {
+  const W = 560, H = 220, L = 34, R = 8, T = 10, B = 24;
+  if (!points.length) { el.innerHTML = '<div class="empty">Aún no hay datos: el servidor guarda un punto por minuto.</div>'; return; }
+  const max = niceMax(Math.max(...points.map(value)));
+  const x = (i) => L + (points.length === 1 ? 0 : i * (W - L - R) / (points.length - 1));
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}"><g class="axis">`;
+  for (let k = 0; k <= 4; k++) {
+    const v = max * k / 4, yy = y(v);
+    svg += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${fmt(v)}</text>`;
+  }
+  const ticks = 4;
+  for (let k = 0; k <= ticks; k++) {
+    const i = Math.round(k * (points.length - 1) / ticks);
+    svg += `<text x="${x(i)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === ticks ? 'end' : 'middle'}">${label === 'dias' ? points[i].date.slice(5) : timeText(points[i].t)}</text>`;
+  }
+  svg += '</g>';
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(value(p)).toFixed(1)}`).join('');
+  svg += `<path d="${line}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z" fill="var(--accent-soft)"/>`;
+  svg += `<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  svg += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${y(0)}" stroke="var(--muted)" stroke-width="1" vector-effect="non-scaling-stroke" style="display:none"/>`;
+  svg += `<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent" class="hit"/></svg><div class="tip"></div>`;
+  el.innerHTML = svg;
+  const s = el.querySelector('svg'), tip = el.querySelector('.tip'), cross = el.querySelector('.cross');
+  const hit = el.querySelector('.hit');
+  hit.addEventListener('mousemove', (ev) => {
+    const box = s.getBoundingClientRect();
+    const px = (ev.clientX - box.left) / box.width * W;
+    const i = Math.max(0, Math.min(points.length - 1, Math.round((px - L) / (W - L - R) * (points.length - 1))));
+    const p = points[i];
+    cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.style.display = '';
+    tip.innerHTML = format(p);
+    tip.style.left = (x(i) / W * box.width) + 'px';
+    tip.style.top = (y(value(p)) / H * box.height) + 'px';
+    tip.style.display = 'block';
+  });
+  hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; cross.style.display = 'none'; });
+}
+
+// Una serie en barras: extremos de datos redondeados (4px) sobre la base, separación de 2px entre barras.
+function barChart(el, points, { value, format, label }) {
+  const W = 560, H = 220, L = 40, R = 8, T = 10, B = 24;
+  if (!points.length) { el.innerHTML = '<div class="empty">Aún no hay datos.</div>'; return; }
+  const max = niceMax(Math.max(...points.map(value)));
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const slot = (W - L - R) / Math.max(points.length, 7), bw = Math.max(2, Math.min(28, slot - 2));
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}"><g class="axis">`;
+  for (let k = 0; k <= 4; k++) {
+    const v = max * k / 4, yy = y(v);
+    svg += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${v.toLocaleString('es', { maximumFractionDigits: 2 })}</text>`;
+  }
+  svg += '</g>';
+  points.forEach((p, i) => {
+    const cx = L + slot * i + slot / 2, top = y(value(p)), h = Math.max(0, y(0) - top), r = Math.min(4, h, bw / 2);
+    const x0 = cx - bw / 2, x1 = cx + bw / 2, b = y(0);
+    const d = h > 0 ? `M${x0},${b}V${top + r}Q${x0},${top} ${x0 + r},${top}H${x1 - r}Q${x1},${top} ${x1},${top + r}V${b}Z` : '';
+    svg += `<path d="${d}" fill="var(--accent)"/>`;
+    svg += `<rect x="${cx - slot / 2}" y="${T}" width="${slot}" height="${H - T - B}" fill="transparent" data-i="${i}" class="bar-hit"/>`;
+    if (i === 0 || i === points.length - 1 || points.length <= 8)
+      svg += `<g class="axis"><text x="${cx}" y="${H - 6}" text-anchor="middle">${p.date.slice(5)}</text></g>`;
+  });
+  svg += '</svg><div class="tip"></div>';
+  el.innerHTML = svg;
+  const s = el.querySelector('svg'), tip = el.querySelector('.tip');
+  el.querySelectorAll('.bar-hit').forEach((r) => {
+    r.addEventListener('mousemove', () => {
+      const i = Number(r.dataset.i), p = points[i], box = s.getBoundingClientRect();
+      tip.innerHTML = format(p);
+      tip.style.left = ((L + slot * i + slot / 2) / W * box.width) + 'px';
+      tip.style.top = (y(value(p)) / H * box.height) + 'px';
+      tip.style.display = 'block';
+    });
+    r.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  });
+}
+
+function table(headers, rows) {
+  if (!rows.length) return '<div class="empty">Nada por ahora.</div>';
+  return '<table><thead><tr>' + headers.map(([h, num]) => `<th class="${num ? 'num' : ''}">${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
+    rows.map((r) => '<tr>' + r.map((c, i) => `<td class="${headers[i][1] ? 'num' : ''}">${c}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+}
+
+function render(d) {
+  const st = $('status');
+  st.querySelector('.dot').style.background = d.now.paused ? 'var(--warn)' : 'var(--good)';
+  st.lastElementChild.textContent = d.now.paused ? '⏸ En pausa: tope mensual alcanzado' : '✓ Activo';
+  const up = Math.floor(d.now.uptimeMs / 60000);
+  $('updated').textContent = `Actualizado ${timeText(Date.now())} · servidor encendido hace ${up >= 60 ? Math.floor(up / 60) + ' h ' : ''}${up % 60} min`;
+
+  $('online').textContent = fmt(d.now.online);
+  $('online-sub').textContent = `máximo de hoy: ${fmt(d.today.peakOnline)}`;
+  $('searching').textContent = fmt(d.now.searching);
+  $('rooms').textContent = fmt(d.now.rooms);
+  $('rooms-sub').textContent = `${fmt(d.now.privateRooms)} privadas · ${fmt(d.now.rooms - d.now.privateRooms)} de grupos abiertos`;
+  $('groups').textContent = fmt(d.now.groups);
+  $('groups-sub').textContent = `${fmt(d.now.players)} jugadores dentro`;
+
+  const pct = d.traffic.cap ? d.traffic.bytes / d.traffic.cap * 100 : 0;
+  $('traffic').textContent = gbText(d.traffic.bytes);
+  $('traffic-cap').textContent = `de ${fmt(gb(d.traffic.cap))} GB (${pct.toLocaleString('es', { maximumFractionDigits: 2 })} %)`;
+  $('traffic-month').textContent = `mes ${d.traffic.month} · se reinicia el día 1 (UTC)`;
+  $('meter-bar').style.width = Math.min(100, pct) + '%';
+  $('meter').setAttribute('aria-valuenow', pct.toFixed(2));
+  $('traffic-warn').textContent = pct >= 80 ? `⚠ Por encima del 80 % del tope: al llegar al 100 % el servidor se pausa hasta el mes siguiente.` : '';
+
+  // Tramos de 5 minutos con el máximo de cada uno: 288 puntos en vez de 1440.
+  const mins = [];
+  for (let i = 0; i < d.minutes.length; i += 5) {
+    const part = d.minutes.slice(i, i + 5);
+    mins.push({ t: part[part.length - 1].t, online: Math.max(...part.map((p) => p.online)),
+                rooms: Math.max(...part.map((p) => p.rooms)), groups: Math.max(...part.map((p) => p.groups)) });
+  }
+  lineChart($('chart-online'), mins, { label: 'Consolas en salas, últimas 24 horas', value: (p) => p.online,
+    format: (p) => `${timeText(p.t)} · máx. <b>${fmt(p.online)}</b> consolas · ${fmt(p.rooms)} salas · ${fmt(p.groups)} grupos` });
+  $('table-online').innerHTML = table([['Hora'], ['Consolas', 1], ['Salas', 1], ['Grupos', 1]],
+    mins.slice(-36).reverse().map((p) => [timeText(p.t), fmt(p.online), fmt(p.rooms), fmt(p.groups)]));
+
+  barChart($('chart-traffic'), d.days, { label: 'Tráfico por día', value: (p) => gb(p.bytes),
+    format: (p) => `${p.date} · <b>${gbText(p.bytes)}</b> · máximo ${fmt(p.peakOnline)} consolas` });
+  $('table-traffic').innerHTML = table([['Día'], ['Tráfico', 1], ['Máx. consolas', 1], ['Buscaron', 1]],
+    d.days.slice().reverse().map((p) => [p.date, gbText(p.bytes), fmt(p.peakOnline), fmt(p.searchers)]));
+
+  $('games').innerHTML = table([['Juego'], ['Grupos', 1], ['Jugadores', 1]],
+    d.now.byGame.map((g) => [esc(d.gameNames[g.game] || g.game.toUpperCase()), fmt(g.groups), fmt(g.players)]));
+
+  $('counters').innerHTML = table([['', 0], ['Hoy', 1], ['Total', 1]],
+    COUNTERS.map(([k, name]) => [esc(name), fmt(d.today.counters[k]), fmt(d.counters[k])]));
+
+  $('events').innerHTML = d.events.length ? '<table><tbody>' + d.events.map((e) =>
+    `<tr><td>${new Date(e.t).toLocaleString('es', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(e.text)}</td></tr>`).join('') + '</tbody></table>'
+    : '<div class="empty">Sin actividad todavía.</div>';
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/stats', { cache: 'no-store' });
+    render(await r.json());
+  } catch {
+    const st = $('status');
+    st.querySelector('.dot').style.background = 'var(--bad)';
+    st.lastElementChild.textContent = '✕ Sin conexión con el servidor (¿túnel cerrado?)';
+  }
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

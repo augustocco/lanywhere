@@ -121,6 +121,19 @@ To install it as a service on Ubuntu (with SSH key access):
 It installs Node.js if missing and sets the server up as a sandboxed systemd service (no privileges), with automatic
 security updates. Recommended: allow SSH only from your IP.
 
+### Activity dashboard
+
+The server comes with an activity dashboard: connected consoles, rooms, open groups per game, monthly traffic against
+the cap, charts for the last 24 hours and the last 30 days, counters and recent activity. It only listens inside the
+server (`127.0.0.1:11461`), so no new port is opened; you view it from your PC through an SSH tunnel:
+
+```powershell
+.\scripts\panel.ps1 -VmHost <VM IP> -Key $HOME\.ssh\my_key
+```
+
+Everything is aggregated: no IPs or personal data (only nicknames and room codes). To see names instead of game ids,
+create `games.json` in the state directory, for example `{"0100000000ABC000": "My game"}`.
+
 ## Building
 
 With [devkitPro](https://devkitpro.org) (devkitA64 and libnx):

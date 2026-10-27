@@ -11,7 +11,9 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $ssh = @('-i', $Key, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new')
 
-& scp @ssh (Join-Path $root 'server\relay\server.js') "${User}@${VmHost}:/tmp/lanywhere-servidor.js"
+# El servidor y su panel de actividad (stats.js + dashboard.html, solo en 127.0.0.1; ver scripts/panel.ps1).
+$files = 'server.js', 'stats.js', 'dashboard.html'
+& scp @ssh ($files | ForEach-Object { Join-Path $root "server\relay\$_" }) "${User}@${VmHost}:/tmp/"
 if ($LASTEXITCODE -ne 0) { throw 'scp falló' }
 
 $remote = @'
@@ -23,7 +25,10 @@ if ! command -v node >/dev/null 2>&1 || ! command -v netfilter-persistent >/dev/
 fi
 sudo id lanywhere >/dev/null 2>&1 || sudo useradd --system --home /opt/lanywhere --shell /usr/sbin/nologin lanywhere
 sudo install -d -o lanywhere -g lanywhere /opt/lanywhere
-sudo install -o lanywhere -g lanywhere -m 0644 /tmp/lanywhere-servidor.js /opt/lanywhere/server.js
+for f in server.js stats.js dashboard.html; do
+  sudo install -o lanywhere -g lanywhere -m 0644 "/tmp/$f" "/opt/lanywhere/$f"
+  rm -f "/tmp/$f"
+done
 sudo tee /etc/systemd/system/lanywhere.service >/dev/null <<'UNIT'
 [Unit]
 Description=LANywhere: servidor de salas (TCP/UDP 11460)

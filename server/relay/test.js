@@ -117,9 +117,11 @@ function nick(buf) {
 }
 
 async function main() {
-    let server;
+    let server, statsDir;
     if (!process.argv[2]) {
-        server = spawn(process.execPath, [path.join(__dirname, 'server.js'), '--port', String(PORT)], { stdio: ['ignore', 'pipe', 'inherit'] });
+        statsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lanywhere-stats-'));
+        server = spawn(process.execPath, [path.join(__dirname, 'server.js'), '--port', String(PORT)],
+            { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, LANYWHERE_STATS_PORT: String(PORT + 2), LANYWHERE_STATE_DIR: statsDir } });
         await new Promise((ok) => server.stdout.on('data', (d) => String(d).includes('datos UDP') && ok()));
     }
     const ok = (msg) => console.log('  ok', msg);
@@ -260,6 +262,21 @@ async function main() {
         ok('apodos: uno ofensivo pasa a "Jugador NNNN"; uno normal se mantiene');
 
         if (server) {
+            // Panel de actividad: solo en 127.0.0.1, con contadores y la página.
+            const get = (url) => new Promise((ok, fail) => require('http').get(url, (r) => {
+                let body = '';
+                r.on('data', (c) => (body += c));
+                r.on('end', () => ok({ status: r.statusCode, body }));
+            }).on('error', fail));
+            const api = JSON.parse((await get(`http://127.0.0.1:${PORT + 2}/api/stats`)).body);
+            assert.ok(api.counters.roomsCreated >= 1 && api.counters.joins >= 1 && api.counters.finds >= 1, JSON.stringify(api.counters));
+            assert.ok(api.counters.nicksFiltered >= 1 && api.traffic.cap === 8000e9);
+            const page = await get(`http://127.0.0.1:${PORT + 2}/`);
+            assert.ok(page.status === 200 && page.body.includes('LANywhere'));
+            ok('panel: /api/stats cuenta salas, entradas, búsquedas y apodos filtrados; la página se sirve');
+        }
+
+        if (server) {
             // Tope mensual: con el contador del mes ya por encima del tope, el servidor arranca en pausa.
             const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lanywhere-'));
             fs.writeFileSync(path.join(dir, 'traffic.json'), JSON.stringify({ month: new Date().toISOString().slice(0, 7), bytes: 9e12 }));
@@ -281,6 +298,7 @@ async function main() {
         console.log('TODAS LAS PRUEBAS OK');
     } finally {
         if (server) server.kill();
+        if (statsDir) fs.rmSync(statsDir, { recursive: true, force: true });
     }
 }
 
