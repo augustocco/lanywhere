@@ -1,6 +1,6 @@
 # LANywhere
 
-[Español](README.es.md) · **English**
+[Español](README.es.md) · **English** · 🌐 **[lanywhere.online](https://lanywhere.online)**: open groups right now
 
 > 🧪 **Beta: we are looking for testers.** Everything works with a single console, but we still need full matches
 > between real consoles in different homes. If you try it, tell us how it went (even if it failed) with a

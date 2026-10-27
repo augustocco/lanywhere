@@ -1,6 +1,6 @@
 # LANywhere
 
-**Español** · [English](README.md)
+**Español** · [English](README.md) · 🌐 **[lanywhere.online](https://lanywhere.online)**: grupos abiertos ahora
 
 > 🧪 **Beta: buscamos probadores.** Todo funciona con una sola consola, pero falta probar partidas completas entre
 > consolas reales en casas distintas. Si lo pruebas, cuéntanos cómo fue (aunque haya fallado) con un

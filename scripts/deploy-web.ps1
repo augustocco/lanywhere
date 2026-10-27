@@ -21,7 +21,7 @@ if ($LASTEXITCODE -ne 0) { throw 'scp falló' }
 $remote = @"
 set -e
 DOMAIN='$Domain'
-"@ + @'
+"@ + "`n" + @'
 # Caddy desde su repositorio oficial.
 if ! command -v caddy >/dev/null 2>&1; then
   sudo apt-get update -qq
