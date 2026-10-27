@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LANywhere</title>
+<meta name="description" content="Your local multiplayer, online. Play your games' local wireless mode with anyone, anywhere: no PC, no setup.">
+<meta property="og:title" content="LANywhere">
+<meta property="og:description" content="Your local multiplayer, online.">
+<meta property="og:image" content="icon.png">
+<link rel="icon" href="icon.png">
+<style>
+  :root {
+    --bg: #0f121c; --bg-2: #161b2a; --card: #1b2133; --line: #2a3147;
+    --text: #f2f3f7; --text-2: #b3b8c6; --muted: #7d8497;
+    --accent: #8b5cf6; --accent-2: #b396ff; --accent-soft: rgba(139, 92, 246, 0.16);
+    --good: #34c759; --seat-off: rgba(255, 255, 255, 0.16);
+    --radius: 16px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f5fa; --bg-2: #ffffff; --card: #ffffff; --line: #e3e3ee;
+      --text: #1b1f2a; --text-2: #4a5163; --muted: #7a8193;
+      --accent: #6d3fe0; --accent-2: #6d3fe0; --accent-soft: rgba(109, 63, 224, 0.1);
+      --good: #1f8f3e; --seat-off: rgba(0, 0, 0, 0.12);
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+  a { color: var(--accent-2); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; text-decoration: none; color: var(--text); }
+  .brand img { width: 34px; height: 34px; border-radius: 9px; }
+  .top-right { display: flex; align-items: center; }
+  nav a { color: var(--text-2); text-decoration: none; margin-left: 18px; font-size: 15px; }
+  nav a:hover { color: var(--text); }
+  .lang { background: none; border: 1px solid var(--line); color: var(--text-2); border-radius: 999px; padding: 4px 10px; margin-left: 18px; cursor: pointer; font: inherit; font-size: 13px; }
+
+  .hero { padding: 48px 0 32px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 32px; align-items: center; }
+  .hero h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.08; margin: 0 0 16px; letter-spacing: -0.02em; }
+  .hero h1 em { font-style: normal; color: var(--accent-2); }
+  .hero p { color: var(--text-2); font-size: 18px; margin: 0 0 24px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 12px 20px; border-radius: 12px; text-decoration: none; font-weight: 600; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.ghost { border: 1px solid var(--line); color: var(--text); }
+  .beta { display: inline-block; font-size: 13px; color: var(--accent-2); background: var(--accent-soft); border-radius: 999px; padding: 3px 10px; margin-bottom: 14px; }
+
+  .live { background: var(--card); border-radius: var(--radius); padding: 22px; border: 1px solid var(--line); }
+  .live .head { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 14px; margin-bottom: 14px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.18); }
+  .dot.off { background: var(--muted); box-shadow: none; }
+  .nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .num .v { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .num .l { font-size: 13px; color: var(--muted); }
+
+  section { padding: 28px 0; }
+  h2 { font-size: 24px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--text-2); margin: 0 0 18px; }
+  .groups { display: grid; gap: 10px; }
+  .group { display: flex; align-items: center; justify-content: space-between; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; }
+  .group .game { font-weight: 600; }
+  .group .host { color: var(--muted); font-size: 14px; }
+  .seats { display: flex; align-items: center; gap: 5px; }
+  .seat { width: 12px; height: 12px; border-radius: 50%; background: var(--seat-off); }
+  .seat.on { background: var(--good); }
+  .count { font-variant-numeric: tabular-nums; font-weight: 600; margin-left: 10px; min-width: 34px; text-align: right; }
+  .empty { background: var(--card); border: 1px dashed var(--line); border-radius: 14px; padding: 24px; color: var(--text-2); }
+  .empty b { color: var(--text); }
+
+  .games { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: var(--accent-soft); color: var(--text); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+  .chip span { color: var(--muted); margin-left: 6px; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .step .n { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; margin-bottom: 10px; }
+  .step h3 { margin: 0 0 6px; font-size: 17px; }
+  .step p { margin: 0; color: var(--text-2); font-size: 15px; }
+
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .feature { padding: 4px 0; }
+  .feature h3 { margin: 0 0 4px; font-size: 16px; }
+  .feature p { margin: 0; color: var(--text-2); font-size: 15px; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 32px; padding: 24px 0 40px; color: var(--muted); font-size: 13px; }
+  footer p { margin: 0 0 8px; }
+
+  @media (max-width: 760px) {
+    .hero { grid-template-columns: 1fr; padding-top: 24px; }
+    .steps, .features { grid-template-columns: 1fr; }
+    nav a { display: none; }
+    .seat { width: 9px; height: 9px; gap: 3px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#"><img src="icon.png" alt="">LANywhere</a>
+    <div class="top-right">
+      <nav><a href="#grupos" data-i18n="nav.groups">Grupos abiertos</a><a href="#empezar" data-i18n="nav.start">Empezar</a><a href="https://github.com/augustocco/lanywhere">GitHub</a></nav>
+      <button class="lang" id="lang" type="button">English</button>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div>
+      <span class="beta" data-i18n="beta">Beta pública</span>
+      <h1 data-i18n-html="hero.title">Tu multijugador local, <em>ahora en línea</em>.</h1>
+      <p data-i18n="hero.text">El modo inalámbrico local de tus juegos, con gente de cualquier lugar. Sin PC, sin configurar nada y sin escribir IPs: creas un grupo en el juego y el mundo se puede unir.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/augustocco/lanywhere/releases/latest" data-i18n="cta.download">Descargar</a>
+        <a class="btn ghost" href="#empezar" data-i18n="cta.how">Cómo funciona</a>
+      </div>
+    </div>
+    <div class="live" aria-live="polite">
+      <div class="head"><span class="dot off" id="dot"></span><span id="status" data-i18n="status.loading">Conectando con la red…</span></div>
+      <div class="nums">
+        <div class="num"><div class="v" id="online">–</div><div class="l" data-i18n="num.online">consolas conectadas</div></div>
+        <div class="num"><div class="v" id="groups">–</div><div class="l" data-i18n="num.groups">grupos abiertos</div></div>
+        <div class="num"><div class="v" id="players">–</div><div class="l" data-i18n="num.players">jugadores en grupos</div></div>
+      </div>
+    </div>
+  </div>
+
+  <section id="grupos">
+    <h2 data-i18n="groups.title">Grupos abiertos ahora</h2>
+    <p class="sub" data-i18n="groups.sub">Entra en el modo inalámbrico local del juego y busca grupo: aparecerán ahí. Se actualiza solo.</p>
+    <div class="groups" id="list"></div>
+  </section>
+
+  <section id="juegos" hidden>
+    <h2 data-i18n="games.title">Se está jugando</h2>
+    <div class="games" id="games"></div>
+  </section>
+
+  <section id="empezar">
+    <h2 data-i18n="start.title">Empezar en tres pasos</h2>
+    <p class="sub" data-i18n="start.sub">Necesitas una consola con Atmosphère 1.12.x y Wi-Fi con internet. Ya hay un servidor público funcionando.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h3 data-i18n="s1.t">Instala</h3><p data-i18n="s1.p">Descarga el zip y descomprímelo en la raíz de la tarjeta SD. Reinicia la consola.</p></div>
+      <div class="step"><div class="n">2</div><h3 data-i18n="s2.t">Abre el juego</h3><p data-i18n="s2.p">Entra en su modo inalámbrico local, como si jugaras con alguien al lado.</p></div>
+      <div class="step"><div class="n">3</div><h3 data-i18n="s3.t">Crea o únete</h3><p data-i18n="s3.p">Crea un grupo y aparecerá para todo el mundo, o busca uno abierto y entra.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="features">
+      <div class="feature"><h3 data-i18n="f1.t">Cualquier juego con modo local</h3><p data-i18n="f1.p">Funciona con los juegos que tienen inalámbrico local, sin parches por juego.</p></div>
+      <div class="feature"><h3 data-i18n="f2.t">Salas privadas</h3><p data-i18n="f2.p">¿Solo con un amigo? Crea una sala en la app y pásale el código de 6 letras.</p></div>
+      <div class="feature"><h3 data-i18n="f3.t">Tu privacidad</h3><p data-i18n="f3.p">Los demás ven un apodo, nunca tu nombre de usuario ni tu IP. Sin cuentas.</p></div>
+      <div class="feature"><h3 data-i18n="f4.t">Código abierto</h3><p data-i18n="f4.p">Todo está en GitHub, incluido el servidor, por si quieres montar el tuyo.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <p data-i18n="foot.1">LANywhere es un proyecto independiente y sin ánimo de lucro, sin relación con ningún fabricante de consolas ni de juegos. Solo lleva por internet el tráfico del modo inalámbrico local: no modifica juegos ni da acceso a servicios en línea oficiales. Los nombres de juegos que aparecen son marcas de sus dueños.</p>
+    <p><a href="https://github.com/augustocco/lanywhere">GitHub</a> · GPL-2.0 · <span data-i18n="foot.updated">Actualizado</span> <span id="updated">–</span></p>
+  </footer>
+</div>
+
+<script>
+const T = {
+  en: {
+    'nav.groups': 'Open groups', 'nav.start': 'Get started', beta: 'Public beta',
+    'hero.title': 'Your local multiplayer, <em>online</em>.',
+    'hero.text': "Your games' local wireless mode, with people anywhere. No PC, no setup, no IPs to type: create a group in the game and the world can join.",
+    'cta.download': 'Download', 'cta.how': 'How it works',
+    'status.loading': 'Connecting to the network…', 'status.ok': 'Network online', 'status.off': 'Network unreachable right now',
+    'num.online': 'consoles online', 'num.groups': 'open groups', 'num.players': 'players in groups',
+    'groups.title': 'Open groups right now', 'groups.sub': "Go to the game's local wireless mode and search for groups: they'll show up there. Updates by itself.",
+    'groups.empty': '<b>No open groups right now.</b> Be the first: create a group in a game\'s local wireless mode and it will show up here for everyone.',
+    'groups.host': "{host}'s group", 'games.title': 'Being played', 'games.groups': '{n} groups', 'games.group': '1 group',
+    'start.title': 'Get started in three steps', 'start.sub': 'You need a console with Atmosphère 1.12.x and Wi-Fi with internet. A public server is already running.',
+    's1.t': 'Install', 's1.p': 'Download the zip and unzip it to the root of the SD card. Restart the console.',
+    's2.t': 'Open the game', 's2.p': 'Go to its local wireless mode, as if you were playing with someone next to you.',
+    's3.t': 'Create or join', 's3.p': 'Create a group and everyone will see it, or search for an open one and join.',
+    'f1.t': 'Any game with local play', 'f1.p': 'Works with games that have local wireless, with no per-game patches.',
+    'f2.t': 'Private rooms', 'f2.p': 'Just you and a friend? Create a room in the app and share the 6-letter code.',
+    'f3.t': 'Your privacy', 'f3.p': 'Others see a nickname, never your user name or your IP. No accounts.',
+    'f4.t': 'Open source', 'f4.p': 'Everything is on GitHub, the server included, in case you want to host your own.',
+    'foot.1': "LANywhere is an independent, non-profit project, not affiliated with any console or game maker. It only carries local wireless traffic over the internet: it does not modify games or give access to official online services. Game names shown are trademarks of their owners.",
+    'foot.updated': 'Updated', 'game.unknown': 'Game {id}',
+  },
+  es: {
+    'status.ok': 'Red en línea', 'status.off': 'La red no responde ahora mismo',
+    'groups.empty': '<b>No hay grupos abiertos ahora.</b> Sé el primero: crea un grupo en el modo inalámbrico local de un juego y aparecerá aquí para todos.',
+    'groups.host': 'Grupo de {host}', 'games.groups': '{n} grupos', 'games.group': '1 grupo', 'game.unknown': 'Juego {id}',
+  },
+};
+// El texto en español está en el HTML; T.es solo tiene lo que se genera desde aquí.
+const original = {};
+document.querySelectorAll('[data-i18n],[data-i18n-html]').forEach((el) => {
+  original[el.dataset.i18n || el.dataset.i18nHtml] = el.dataset.i18nHtml ? el.innerHTML : el.textContent;
+});
+let lang;
+try { lang = localStorage.getItem('lang'); } catch { lang = null; }
+if (lang !== 'es' && lang !== 'en') lang = (navigator.language || 'es').toLowerCase().startsWith('es') ? 'es' : 'en';
+const t = (k, vars = {}) => {
+  let s = (lang === 'en' ? T.en[k] : (T.es[k] ?? original[k])) ?? T.en[k] ?? k;
+  for (const [a, b] of Object.entries(vars)) s = s.replace('{' + a + '}', b);
+  return s;
+};
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const fmt = (n) => Number(n || 0).toLocaleString(lang);
+let last = null, ok = false;
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-html]').forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.getElementById('lang').textContent = lang === 'es' ? 'English' : 'Español';
+  render();
+}
+document.getElementById('lang').addEventListener('click', () => {
+  lang = lang === 'es' ? 'en' : 'es';
+  try { localStorage.setItem('lang', lang); } catch { /* sin almacenamiento: solo esta visita */ }
+  applyLang();
+});
+
+function gameName(g) { return g.name || t('game.unknown', { id: g.game.toUpperCase() }); }
+
+function render() {
+  const dot = document.getElementById('dot'), status = document.getElementById('status');
+  dot.className = 'dot' + (ok ? '' : ' off');
+  status.textContent = last ? t(ok ? 'status.ok' : 'status.off') : t(ok ? 'status.ok' : 'status.loading');
+  if (!last) return;
+  document.getElementById('online').textContent = fmt(last.online);
+  document.getElementById('groups').textContent = fmt(last.groups);
+  document.getElementById('players').textContent = fmt(last.players);
+  document.getElementById('updated').textContent = new Date(last.updated).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  const list = document.getElementById('list');
+  list.innerHTML = last.list.length ? last.list.map((g) => {
+    const seats = Array.from({ length: Math.min(g.max, 8) }, (_, i) => `<span class="seat${i < g.players ? ' on' : ''}"></span>`).join('');
+    return `<div class="group"><div><div class="game">${esc(gameName(g))}</div><div class="host">${esc(t('groups.host', { host: g.host || '?' }))}</div></div>` +
+           `<div class="seats" aria-label="${g.players}/${g.max}">${seats}<span class="count">${g.players}/${g.max}</span></div></div>`;
+  }).join('') : `<div class="empty">${t('groups.empty')}</div>`;
+
+  const games = document.getElementById('juegos');
+  games.hidden = !last.games.length;
+  document.getElementById('games').innerHTML = last.games.map((g) =>
+    `<span class="chip">${esc(gameName(g))}<span>${g.groups === 1 ? t('games.group') : t('games.groups', { n: fmt(g.groups) })}</span></span>`).join('');
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('api/public', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    last = await r.json();
+    ok = true;
+  } catch {
+    ok = false;
+  }
+  render();
+}
+applyLang();
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

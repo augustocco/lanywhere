@@ -8,6 +8,8 @@
 //   LANYWHERE_STATE_DIR   dónde guardar el contador de tráfico y la historia del panel (por defecto, la carpeta del
 //                    servidor).
 //   LANYWHERE_STATS_PORT  puerto del panel de actividad, solo en 127.0.0.1 (por defecto 11461; 0 lo desactiva).
+//   LANYWHERE_PUBLIC_PORT puerto de los datos públicos para la web, solo en 127.0.0.1 (por defecto 11463; 0 lo
+//                    desactiva). Lo publica el proxy HTTPS.
 
 const fs = require('fs');
 const path = require('path');
@@ -39,6 +41,7 @@ const LIMITS = {
 const CAP_BYTES = (Number(process.env.LANYWHERE_CAP_GB) || 8000) * 1e9;
 const STATE_FILE = path.join(process.env.LANYWHERE_STATE_DIR || __dirname, 'traffic.json');
 const STATS_PORT = process.env.LANYWHERE_STATS_PORT === undefined ? 11461 : Number(process.env.LANYWHERE_STATS_PORT);
+const PUBLIC_PORT = process.env.LANYWHERE_PUBLIC_PORT === undefined ? 11463 : Number(process.env.LANYWHERE_PUBLIC_PORT);
 const UDP_OVERHEAD = 28, TCP_OVERHEAD = 52;  // cabeceras IP/UDP e IP/TCP: también cuentan como tráfico
 
 const T = { CREATE: 0x01, JOIN: 0x02, LEAVE: 0x03, RELAY: 0x04, PING: 0x05, RESUME: 0x06, PUBLISH: 0x07, FIND: 0x08,
@@ -463,6 +466,21 @@ function snapshot() {
     return { online, rooms: rooms.size, privateRooms, groups, players,
              byGame: [...byGame.values()].sort((a, b) => b.players - a.players) };
 }
+// Grupos abiertos para la web pública: lo mismo que la lista de la app, sin el código de la sala.
+function publicGroups() {
+    const out = [];
+    for (const r of rooms.values()) {
+        if (!r.published) continue;
+        const info = r.published.info, players = info[0x67], max = info[0x66];
+        if (players >= max) continue;
+        const name = info.subarray(NODES + 12, NODES + 45);
+        const end = name.indexOf(0);
+        out.push({ game: r.published.lcid.toString(16).padStart(16, '0'), host: name.subarray(0, end < 0 ? name.length : end).toString('utf8'),
+                   players, max });
+    }
+    return out.sort((a, b) => b.players - a.players).slice(0, 50);
+}
+require('./public').create({ stateDir: path.dirname(STATE_FILE), port: PUBLIC_PORT, snapshot, groups: publicGroups });
 stats = require('./stats').create({ stateDir: path.dirname(STATE_FILE), port: STATS_PORT, snapshot, traffic,
                                     capBytes: CAP_BYTES, paused: () => paused });
 setInterval(() => { checkMonth(); saveTraffic(); }, 60000).unref();
