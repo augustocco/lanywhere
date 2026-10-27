@@ -97,7 +97,7 @@
       <details><summary>Ver los datos</summary><div id="table-online"></div></details>
     </div>
     <div class="card">
-      <h2>Tráfico por día, últimos 30 días (GB)</h2>
+      <h2 id="traffic-title">Tráfico por día, últimos 30 días</h2>
       <div class="chart" id="chart-traffic"></div>
       <details><summary>Ver los datos</summary><div id="table-traffic"></div></details>
     </div>
@@ -146,44 +146,52 @@ function niceMax(v) {
   return 10 * p;
 }
 
-// Una serie: área + línea de 2px, eje Y con 4 marcas, cruceta y globo al pasar el ratón.
+// Una serie sobre un eje de tiempo fijo (las últimas 24 h hasta ahora, marcas cada 6 h): con pocos datos el gráfico
+// no se deforma. Eje Y en números enteros (son consolas). Área + línea de 2px, punto si hay un solo dato, y cruceta
+// con globo al pasar el ratón.
 function lineChart(el, points, { label, value, format }) {
-  const W = 560, H = 220, L = 34, R = 8, T = 10, B = 24;
-  if (!points.length) { el.innerHTML = '<div class="empty">Aún no hay datos: el servidor guarda un punto por minuto.</div>'; return; }
-  const max = niceMax(Math.max(...points.map(value)));
-  const x = (i) => L + (points.length === 1 ? 0 : i * (W - L - R) / (points.length - 1));
+  const W = 560, H = 220, L = 34, R = 12, T = 10, B = 24;
+  const t1 = Date.now(), t0 = t1 - 24 * 3600 * 1000;
+  const step = Math.max(1, Math.ceil(Math.max(0, ...points.map(value)) / 4));
+  const max = step * 4;
+  const x = (t) => L + Math.max(0, Math.min(1, (t - t0) / (t1 - t0))) * (W - L - R);
   const y = (v) => T + (H - T - B) * (1 - v / max);
   let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}"><g class="axis">`;
   for (let k = 0; k <= 4; k++) {
-    const v = max * k / 4, yy = y(v);
+    const v = step * k, yy = y(v);
     svg += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${fmt(v)}</text>`;
   }
-  const ticks = 4;
-  for (let k = 0; k <= ticks; k++) {
-    const i = Math.round(k * (points.length - 1) / ticks);
-    svg += `<text x="${x(i)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === ticks ? 'end' : 'middle'}">${label === 'dias' ? points[i].date.slice(5) : timeText(points[i].t)}</text>`;
+  for (let k = 0; k <= 4; k++) {
+    const t = t0 + k * 6 * 3600 * 1000;
+    svg += `<text x="${x(t)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === 4 ? 'end' : 'middle'}">${k === 4 ? 'ahora' : timeText(t)}</text>`;
   }
   svg += '</g>';
-  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(value(p)).toFixed(1)}`).join('');
-  svg += `<path d="${line}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z" fill="var(--accent-soft)"/>`;
-  svg += `<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
-  svg += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${y(0)}" stroke="var(--muted)" stroke-width="1" vector-effect="non-scaling-stroke" style="display:none"/>`;
+  if (!points.length) {
+    el.innerHTML = svg + `<text x="${(L + W - R) / 2}" y="${(T + H - B) / 2}" text-anchor="middle" fill="var(--muted)" font-size="13">Aún no hay datos: se guarda un punto por minuto.</text></svg>`;
+    return;
+  }
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(value(p)).toFixed(1)}`).join('');
+  const first = points[0], last = points[points.length - 1];
+  svg += `<path d="${line}L${x(last.t)},${y(0)}L${x(first.t)},${y(0)}Z" fill="var(--accent-soft)"/>`;
+  svg += `<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>`;
+  if (points.length === 1)
+    svg += `<circle cx="${x(first.t)}" cy="${y(value(first))}" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`;
+  svg += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${y(0)}" stroke="var(--muted)" stroke-width="1" style="display:none"/>`;
   svg += `<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent" class="hit"/></svg><div class="tip"></div>`;
   el.innerHTML = svg;
   const s = el.querySelector('svg'), tip = el.querySelector('.tip'), cross = el.querySelector('.cross');
-  const hit = el.querySelector('.hit');
-  hit.addEventListener('mousemove', (ev) => {
+  el.querySelector('.hit').addEventListener('mousemove', (ev) => {
     const box = s.getBoundingClientRect();
-    const px = (ev.clientX - box.left) / box.width * W;
-    const i = Math.max(0, Math.min(points.length - 1, Math.round((px - L) / (W - L - R) * (points.length - 1))));
-    const p = points[i];
-    cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.style.display = '';
+    const t = t0 + ((ev.clientX - box.left) / box.width * W - L) / (W - L - R) * (t1 - t0);
+    let p = points[0];
+    for (const q of points) if (Math.abs(q.t - t) < Math.abs(p.t - t)) p = q;
+    cross.setAttribute('x1', x(p.t)); cross.setAttribute('x2', x(p.t)); cross.style.display = '';
     tip.innerHTML = format(p);
-    tip.style.left = (x(i) / W * box.width) + 'px';
+    tip.style.left = (x(p.t) / W * box.width) + 'px';
     tip.style.top = (y(value(p)) / H * box.height) + 'px';
     tip.style.display = 'block';
   });
-  hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; cross.style.display = 'none'; });
+  el.querySelector('.hit').addEventListener('mouseleave', () => { tip.style.display = 'none'; cross.style.display = 'none'; });
 }
 
 // Una serie en barras: extremos de datos redondeados (4px) sobre la base, separación de 2px entre barras.
@@ -265,7 +273,10 @@ function render(d) {
   $('table-online').innerHTML = table([['Hora'], ['Consolas', 1], ['Salas', 1], ['Grupos', 1]],
     mins.slice(-36).reverse().map((p) => [timeText(p.t), fmt(p.online), fmt(p.rooms), fmt(p.groups)]));
 
-  barChart($('chart-traffic'), d.days, { label: 'Tráfico por día', value: (p) => gb(p.bytes),
+  // MB mientras el tráfico diario sea pequeño (si no, el eje en GB solo mostraría ceros).
+  const unitGB = Math.max(0, ...d.days.map((p) => p.bytes)) >= 1e9;
+  $('traffic-title').textContent = `Tráfico por día, últimos 30 días (${unitGB ? 'GB' : 'MB'})`;
+  barChart($('chart-traffic'), d.days, { label: 'Tráfico por día', value: (p) => p.bytes / (unitGB ? 1e9 : 1e6),
     format: (p) => `${p.date} · <b>${gbText(p.bytes)}</b> · máximo ${fmt(p.peakOnline)} consolas` });
   $('table-traffic').innerHTML = table([['Día'], ['Tráfico', 1], ['Máx. consolas', 1], ['Buscaron en un juego', 1], ['Abrieron la app', 1]],
     d.days.slice().reverse().map((p) => [p.date, gbText(p.bytes), fmt(p.peakOnline), fmt(p.searchers), fmt(p.appUsers)]));
