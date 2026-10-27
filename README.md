@@ -23,6 +23,8 @@ code.
 ## Requirements
 
 - A console running **Atmosphère 1.12.x**.
+- **Nothing else to set up:** LANywhere uses the project's public server, which is already up and running. You don't
+  need your own server, a PC or to type any IP.
 - **Wi-Fi with internet access.**
 - The **same game and the same version** as the other players (just like real local wireless play).
 
@@ -79,9 +81,11 @@ While you are in a private room, your groups are only visible to that room.
 
 The protocol is described (in Spanish) in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
-## Your own server
+## Your own server (optional)
 
-By default the sysmodule uses the project's public server. To use another one, create `sdmc:/lanywhere/config.ini`:
+**You don't need this to play.** LANywhere comes ready to use the project's public server, which is already running.
+This section is only for those who want to host their own (for example, a server closer to their region). To use
+another server, create `sdmc:/lanywhere/config.ini`:
 
 ```ini
 server=1.2.3.4

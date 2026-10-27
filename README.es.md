@@ -23,6 +23,8 @@ código de 6 letras.
 ## Qué necesitas
 
 - Una consola con **Atmosphère 1.12.x**.
+- **Nada más que configurar:** LANywhere usa el servidor público del proyecto, que ya está funcionando. No necesitas
+  un servidor propio, ni PC, ni escribir ninguna IP.
 - **Wi-Fi con internet.**
 - El **mismo juego y la misma versión** que los demás (igual que en el modo local de verdad).
 
@@ -78,9 +80,11 @@ Mientras estás en una sala privada, tus grupos solo los ve esa sala.
 
 El protocolo está en [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
-## Tu propio servidor
+## Tu propio servidor (opcional)
 
-El sysmodule usa el servidor público del proyecto por defecto. Para usar otro, crea `sdmc:/lanywhere/config.ini`:
+**No hace falta para jugar.** LANywhere viene listo para usar el servidor público del proyecto, que ya está
+funcionando. Esta sección es solo para quien quiera montar el suyo (por ejemplo, uno más cerca de su región). Para usar
+otro servidor, crea `sdmc:/lanywhere/config.ini`:
 
 ```ini
 server=1.2.3.4
