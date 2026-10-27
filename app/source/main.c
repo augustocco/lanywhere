@@ -111,6 +111,14 @@ static Result lanywhere_status(LanywhereStatus *out)
 }
 
 // Apodo con el que te ven los demás (el sysmodule crea uno al azar si no hay).
+// El grupo abierto elegido: al buscar grupo en el juego, el sysmodule muestra solo ese (10 minutos).
+static void lanywhere_prefer(const char *code)
+{
+    serviceDispatch(&g_lanywhere, 6,
+        .buffer_attrs = { SfBufferAttr_HipcMapAlias | SfBufferAttr_In },
+        .buffers = { { code, strlen(code) } });
+}
+
 static void lanywhere_nickname(char *out, size_t size)
 {
     memset(out, 0, size);
@@ -136,6 +144,7 @@ typedef struct {
     u64 id;
     char name[128];
     Image icon;
+    bool installed;
 } GameInfo;
 static GameInfo g_games[24];
 static int g_game_count;
@@ -175,6 +184,7 @@ static const GameInfo *game_info(u64 id)
     u64 size = 0;
     if (R_SUCCEEDED(nsGetApplicationControlData(NsApplicationControlSource_Storage, id, &control, sizeof(control), &size)) &&
         size >= sizeof(control.nacp)) {
+        g->installed = true;
         static const int preference[] = { 5, 6, 0, 1 };  // español latino, español, inglés (EE. UU. y RU)
         char name[0x200];
         nacp_name((const unsigned char *)&control.nacp, sizeof(control.nacp), preference, 4, name, sizeof(name));
@@ -314,7 +324,8 @@ static void list_thread(void *arg)
 
 // Zonas táctiles del último fotograma: tocar una equivale a pulsar su botón del mando.
 typedef struct { int x, y, w, h; u64 button; } TouchZone;
-static TouchZone g_zones[8];
+static TouchZone g_zones[16];
+#define TOUCH_CARD  (1ULL << 62)  // tocar la tarjeta del grupo n devuelve TOUCH_CARD | n
 static int g_zone_count;
 
 // Botón del mando según la letra que se dibuja ("−" para Minus).
@@ -366,6 +377,7 @@ typedef struct {
     bool private_room;
     char nickname[33];
     char message[128];
+    int sel;  // grupo elegido en la lista, o -1
 } View;
 
 static void status_pill(const View *v)
@@ -404,9 +416,13 @@ static void seats(int x, int y, int players, int max)
         gfx_round_rect(x + i * 22, y, 16, 16, 8, i < players ? C_OK : C_SEAT_OFF);
 }
 
-static void group_card(int x, int y, int w, const LanywhereGroup *g)
+static void group_card(int x, int y, int w, const LanywhereGroup *g, bool selected)
 {
     const int h = 96;
+    if (selected) {
+        gfx_round_rect(x - 4, y - 4, w + 8, h + 8, 20, C_ACCENT);
+        gfx_round_rect(x, y, w, h, 16, C_BG_TOP);
+    }
     gfx_round_rect(x, y, w, h, 16, C_CARD);
     const GameInfo *info = game_info(g->game_id);
     if (info && info->icon.px) {
@@ -462,8 +478,10 @@ static void groups_column(const View *v)
         return;
     }
     int shown = v->count < 4 ? v->count : 4;
-    for (int i = 0; i < shown; i++)
-        group_card(x, y + i * 108, LIST_W, &v->groups[i]);
+    for (int i = 0; i < shown; i++) {
+        group_card(x, y + i * 108, LIST_W, &v->groups[i], v->sel == i);
+        add_zone(x, y + i * 108, LIST_W, 96, TOUCH_CARD | (u64)i);
+    }
     if (v->count > shown) {
         char more[64];
         snprintf(more, sizeof(more), TR("y %d más: búscalos desde el juego", "and %d more: find them from the game"), v->count - shown);
@@ -563,6 +581,11 @@ static void draw(const View *v)
         buttons[n] = "X"; labels[n++] = v->pub ? TR("Ocultar", "Hide") : TR("Mostrar", "Show");
     }
     buttons[n] = "\u2212"; labels[n++] = TR("Apodo", "Nickname");
+    if (v->sel >= 0) {  // grupo elegido en la lista: solo jugar o volver
+        n = 0;
+        buttons[n] = "A"; labels[n++] = TR("Jugar en este grupo", "Play in this group");
+        buttons[n] = "B"; labels[n++] = TR("Volver", "Back");
+    }
     buttons[n] = "+"; labels[n++] = TR("Salir", "Exit");
     int total = 0;
     for (int i = 0; i < n; i++)
@@ -621,6 +644,28 @@ static bool ask_nickname(const char *current, char *out, size_t size)
 }
 
 
+// Abre el juego del grupo elegido y le dice al sysmodule que, al buscar grupo en el juego, muestre ese. Devuelve
+// true si el sistema va a abrir el juego (la app debe terminar).
+static bool play_group(View *v)
+{
+    const LanywhereGroup *g = &v->groups[v->sel];
+    const GameInfo *info = game_info(g->game_id);
+    if (!info || !info->installed) {
+        snprintf(v->message, sizeof(v->message), "%s", TR("No tienes este juego instalado.", "You don't have this game installed."));
+        return false;
+    }
+    lanywhere_prefer(g->code);
+    char busy[200];
+    snprintf(busy, sizeof(busy), TR("Abriendo %s…", "Opening %s…"), info->name);
+    draw_busy(busy);
+    if (R_FAILED(appletRequestLaunchApplication(g->game_id, NULL))) {
+        snprintf(v->message, sizeof(v->message), "%s", TR("Abre el juego desde el menú: en «Buscar grupo» te espera este grupo.",
+                                                          "Open the game from the menu: this group will be waiting in \"Search for groups\"."));
+        return false;
+    }
+    return true;
+}
+
 static void no_service(PadState *pad)
 {
     gfx_begin();
@@ -671,13 +716,20 @@ int main(int argc, char **argv)
                      R_SUCCEEDED(threadStart(&thread));
 
     View v = {0};
+    v.sel = -1;
     lanywhere_nickname(v.nickname, sizeof(v.nickname));
     View last = {0};
     u64 last_draw = 0;
     bool dirty = true;
     while (appletMainLoop()) {
         padUpdate(&pad);
-        u64 down = padGetButtonsDown(&pad) | touch_button();
+        u64 touch = touch_button();
+        int card = -1;  // tarjeta de grupo tocada
+        if (touch & TOUCH_CARD) {
+            card = (int)(touch & 0xFF);
+            touch = 0;
+        }
+        u64 down = padGetButtonsDown(&pad) | touch;
         if (down & HidNpadButton_Plus)
             break;
 
@@ -692,7 +744,34 @@ int main(int argc, char **argv)
         v.pub = config_public();
         v.private_room = v.st.state == StateInRoom && v.st.game_id == 0;
 
-        if (v.private_room && (down & HidNpadButton_B)) {
+        // Grupos de la lista: se eligen con el dedo o con las flechas; A (o tocar otra vez el elegido) abre su juego.
+        // Dentro de una sala no se puede entrar en un grupo abierto (el juego buscaría solo en la sala).
+        const int shown = v.count > 0 ? (v.count < 4 ? v.count : 4) : 0;
+        const bool can_pick = shown > 0 && v.st.state != StateInRoom;
+        if (!can_pick)
+            v.sel = -1;
+        else if (v.sel >= shown)
+            v.sel = shown - 1;
+        if (card >= 0 && card < shown) {
+            dirty = true;
+            if (!can_pick)
+                snprintf(v.message, sizeof(v.message), "%s", TR("Sal de la sala privada para unirte a un grupo abierto.", "Leave the private room to join an open group."));
+            else if (v.sel == card)
+                down |= HidNpadButton_A;
+            else
+                v.sel = card;
+        }
+        if (can_pick && (down & (HidNpadButton_AnyDown)))
+            v.sel = v.sel < 0 ? 0 : (v.sel + 1 < shown ? v.sel + 1 : v.sel);
+        if (can_pick && v.sel >= 0 && (down & (HidNpadButton_AnyUp)))
+            v.sel--;
+
+        if (v.sel >= 0 && (down & HidNpadButton_B)) {
+            v.sel = -1;
+        } else if (v.sel >= 0 && (down & HidNpadButton_A)) {
+            if (play_group(&v))
+                break;  // el sistema abre el juego: la app termina
+        } else if (v.private_room && (down & HidNpadButton_B)) {
             lanywhere_leave();
             snprintf(v.message, sizeof(v.message), "%s", TR("Saliste de la sala privada.", "You left the private room."));
         } else if (!v.private_room && v.st.state != StateInRoom && (down & HidNpadButton_A)) {

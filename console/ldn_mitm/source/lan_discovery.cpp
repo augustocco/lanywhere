@@ -381,6 +381,7 @@ namespace ams::mitm::ldn {
             if (lanywhere::PublicEnabled()) {
                 const u64 game = (filter.flag & ScanFilterFlag_LocalCommunicationId) ? filter.networkId.intentId.localCommunicationId : 0;
                 lanywhere::FindGroups(game, &LANDiscovery::onPublicGroup, this);
+                this->keepPreferredGroup();
             }
         }
 
@@ -562,6 +563,32 @@ namespace ams::mitm::ldn {
                 break;
             }
         }
+    }
+
+    // Si en la app se eligió un grupo abierto y está entre los encontrados, el juego solo ve ese (los de la red local
+    // siguen apareciendo): así no hay que buscarlo en la lista del juego.
+    void LANDiscovery::keepPreferredGroup() {
+        char preferred[lanywhere::CodeLength + 1];
+        if (!lanywhere::PreferredGroup(preferred, sizeof(preferred)) || !this->udp) {
+            return;
+        }
+        size_t keep = this->publicGroupCount;
+        for (size_t i = 0; i < this->publicGroupCount; i++) {
+            if (std::strcmp(this->publicGroups[i].code, preferred) == 0) {
+                keep = i;
+            }
+        }
+        if (keep == this->publicGroupCount) {
+            return;  // ya no está abierto: se muestran todos
+        }
+        for (size_t i = 0; i < this->publicGroupCount; i++) {
+            if (i != keep) {
+                this->udp->scanResults.erase(this->publicGroups[i].bssid);
+            }
+        }
+        this->publicGroups[0] = this->publicGroups[keep];
+        this->publicGroupCount = 1;
+        lanywhere::Log("ldn: se muestra solo el grupo elegido (sala %s)", preferred);
     }
 
     void LANDiscovery::onPublicGroup(const char *code, const void *data, void *user) {
@@ -850,6 +877,8 @@ namespace ams::mitm::ldn {
                     Result rc = this->connectRoom(networkInfo, userConfig, localCommunicationVersion);
                     if (R_FAILED(rc)) {
                         this->leaveAutoRoom();
+                    } else {
+                        lanywhere::PreferGroup("");  // ya está dentro: la próxima búsqueda vuelve a mostrarlos todos
                     }
                     return rc;
                 }

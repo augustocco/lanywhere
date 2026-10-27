@@ -99,6 +99,11 @@ namespace ams::mitm::lanywhere {
     // Pregunta con una conexión aparte (no hace falta estar en una sala). Devuelve cuántos o -1.
     int FindGroups(u64 local_communication_id, void (*found)(const char *code, const void *network_info, void *user), void *user);
 
+    // El grupo abierto elegido en la app: al buscar en el juego se pide también ese (aunque no esté entre los primeros)
+    // y se muestra solo él. Caduca a los 10 minutos o al unirse. Código vacío: ninguno.
+    void PreferGroup(const char *code);
+    bool PreferredGroup(char *out, size_t size);
+
     // Registro de la sala en sdmc:/lanywhere/relay.log (hasta 256 KB).
     void Log(const char *fmt, ...);
 

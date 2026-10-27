@@ -152,6 +152,7 @@ namespace ams::mitm::ldn {
             size_t publicGroupCount;
             void leaveAutoRoom();
             static void onPublicGroup(const char *code, const void *info, void *user);
+            void keepPreferredGroup();
             void worker();
             void pollRoom();
             void onRoomMessage(u8 from, u8 msg, const void *data, size_t size);

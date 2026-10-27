@@ -333,12 +333,14 @@ function onFrame(socket, type, body) {
         }
         case T.FIND: {
             if (!allowed(ip, 'find')) return send(socket, T.GROUPS, Buffer.from([0]));
-            // Grupos abiertos de un juego (0: todos), con sitio libre; los que tienen más gente primero.
+            // Grupos abiertos de un juego (0: todos), con sitio libre; los que tienen más gente primero. Con un código
+            // después del juego (el grupo elegido en la app), ese va el primero aunque haya muchos.
             const lcid = body.length >= 8 ? body.readBigUInt64LE(0) : 0n;
+            const preferred = body.length >= 14 ? body.subarray(8, 14).toString('ascii').toUpperCase() : '';
             const found = [...rooms.values()]
                 .map((r) => r.published && { code: r.code, info: r.published.info, lcid: r.published.lcid })
                 .filter((g) => g && (!lcid || g.lcid === lcid) && g.info[0x67] < g.info[0x66])
-                .sort((a, b) => b.info[0x67] - a.info[0x67])
+                .sort((a, b) => (b.code === preferred) - (a.code === preferred) || b.info[0x67] - a.info[0x67])
                 .slice(0, MAX_GROUPS);
             const parts = [Buffer.from([found.length])];
             for (const g of found) parts.push(Buffer.from(g.code, 'ascii'), g.info);

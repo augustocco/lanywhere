@@ -634,6 +634,31 @@ namespace ams::mitm::lanywhere {
         }
     }
 
+    namespace {
+        constinit os::SdkMutex g_preferred_lock;
+        char g_preferred[CodeLength + 1];
+        os::Tick g_preferred_at;
+        constexpr TimeSpan PreferredLifetime = TimeSpan::FromMinutes(10);
+    }
+
+    void PreferGroup(const char *code) {
+        std::scoped_lock lk(g_preferred_lock);
+        util::Strlcpy(g_preferred, code, sizeof(g_preferred));
+        g_preferred_at = os::GetSystemTick();
+        if (code[0]) {
+            Log("grupo elegido en la app: sala %s", g_preferred);
+        }
+    }
+
+    bool PreferredGroup(char *out, size_t size) {
+        std::scoped_lock lk(g_preferred_lock);
+        if (std::strlen(g_preferred) != CodeLength || (os::GetSystemTick() - g_preferred_at).ToTimeSpan() >= PreferredLifetime) {
+            return false;
+        }
+        util::Strlcpy(out, g_preferred, size);
+        return true;
+    }
+
     int FindGroups(u64 local_communication_id, void (*found)(const char *code, const void *network_info, void *user), void *user) {
         constexpr size_t InfoSize = 0x480, Record = CodeLength + InfoSize;
         static u8 reply[1 + 8 * Record];
@@ -649,11 +674,14 @@ namespace ams::mitm::lanywhere {
             Log("buscar grupos: %s", err);
             return -1;
         }
-        u8 body[8];
+        // Con un grupo elegido en la app, se pide también ese: el servidor lo pone el primero.
+        u8 body[8 + CodeLength];
         put64(body, local_communication_id);
+        char preferred[CodeLength + 1];
+        const size_t body_size = PreferredGroup(preferred, sizeof(preferred)) ? (std::memcpy(body + 8, preferred, CodeLength), sizeof(body)) : 8;
         u8 type = 0;
         ssize_t n = -1;
-        if (SendFrameTo(fd, T_Find, body, sizeof(body), nullptr, 0)) {
+        if (SendFrameTo(fd, T_Find, body, body_size, nullptr, 0)) {
             n = ReadFrame(fd, std::addressof(type), reply, sizeof(reply), ConnectTimeoutMs);
         }
         ::close(fd);

@@ -70,6 +70,13 @@ namespace ams::mitm::lanywhere {
         R_SUCCEED();
     }
 
+    Result LanywhereService::PreferGroup(const sf::InBuffer &code) {
+        char room[CodeLength + 1];
+        CopyText(room, sizeof(room), code);
+        lanywhere::PreferGroup(room);
+        R_SUCCEED();
+    }
+
     Result LanywhereService::GetNickname(const sf::OutBuffer &out) {
         if (out.GetSize() > 0) {
             lanywhere::Nickname(reinterpret_cast<char *>(out.GetPointer()), out.GetSize());
