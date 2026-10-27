@@ -65,7 +65,7 @@ namespace ams::mitm::lanywhere {
 
     Result LanywhereService::ListGroups(sf::Out<s32> count, const sf::OutBuffer &out) {
         GroupList list = { reinterpret_cast<GroupSummary *>(out.GetPointer()), out.GetSize() / sizeof(GroupSummary), 0 };
-        const int found = lanywhere::FindGroups(0, AddGroup, std::addressof(list));
+        const int found = lanywhere::FindGroups(0, AddGroup, std::addressof(list), true);
         count.SetValue(found < 0 ? -1 : static_cast<s32>(list.count));
         R_SUCCEED();
     }

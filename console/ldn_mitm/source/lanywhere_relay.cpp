@@ -659,7 +659,8 @@ namespace ams::mitm::lanywhere {
         return true;
     }
 
-    int FindGroups(u64 local_communication_id, void (*found)(const char *code, const void *network_info, void *user), void *user) {
+    int FindGroups(u64 local_communication_id, void (*found)(const char *code, const void *network_info, void *user), void *user,
+                   bool from_app) {
         constexpr size_t InfoSize = 0x480, Record = CodeLength + InfoSize;
         static u8 reply[1 + 8 * Record];
         static constinit os::SdkMutex find_lock;
@@ -674,14 +675,18 @@ namespace ams::mitm::lanywhere {
             Log("buscar grupos: %s", err);
             return -1;
         }
-        // Con un grupo elegido en la app, se pide también ese: el servidor lo pone el primero.
-        u8 body[8 + CodeLength];
+        // Juego · grupo elegido en la app (ceros si no hay; el servidor lo pone el primero) · origen (0 juego, 1 app:
+        // la lista de la app se refresca cada pocos segundos y el panel no debe contarlo como búsquedas).
+        u8 body[8 + CodeLength + 1] = {};
         put64(body, local_communication_id);
         char preferred[CodeLength + 1];
-        const size_t body_size = PreferredGroup(preferred, sizeof(preferred)) ? (std::memcpy(body + 8, preferred, CodeLength), sizeof(body)) : 8;
+        if (PreferredGroup(preferred, sizeof(preferred))) {
+            std::memcpy(body + 8, preferred, CodeLength);
+        }
+        body[8 + CodeLength] = from_app ? 1 : 0;
         u8 type = 0;
         ssize_t n = -1;
-        if (SendFrameTo(fd, T_Find, body, body_size, nullptr, 0)) {
+        if (SendFrameTo(fd, T_Find, body, sizeof(body), nullptr, 0)) {
             n = ReadFrame(fd, std::addressof(type), reply, sizeof(reply), ConnectTimeoutMs);
         }
         ::close(fd);
@@ -695,7 +700,9 @@ namespace ams::mitm::lanywhere {
             std::memcpy(code, reply + 1 + i * Record, CodeLength);
             found(code, reply + 1 + i * Record + CodeLength, user);
         }
-        Log("buscar grupos del juego %016lx: %d", local_communication_id, count);
+        if (!from_app) {  // la app pregunta cada pocos segundos: no llenar el registro con eso
+            Log("buscar grupos del juego %016lx: %d", local_communication_id, count);
+        }
         return count;
     }
 

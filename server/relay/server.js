@@ -351,12 +351,14 @@ function onFrame(socket, type, body) {
         }
         case T.FIND: {
             if (!allowed(ip, 'find')) return send(socket, T.GROUPS, Buffer.from([0]));
-            stats.count('finds');
-            stats.noteSearch(ip);
+            // Origen (byte 14): 1 = la lista de la app (se refresca cada pocos segundos), 0 = un juego buscando grupo.
+            const fromApp = body.length >= 15 && body[14] === 1;
+            if (!fromApp) stats.count('finds');
+            stats.noteSearch(ip, fromApp ? 'app' : 'game');
             // Grupos abiertos de un juego (0: todos), con sitio libre; los que tienen más gente primero. Con un código
             // después del juego (el grupo elegido en la app), ese va el primero aunque haya muchos.
             const lcid = body.length >= 8 ? body.readBigUInt64LE(0) : 0n;
-            const preferred = body.length >= 14 ? body.subarray(8, 14).toString('ascii').toUpperCase() : '';
+            const preferred = body.length >= 14 && body[8] ? body.subarray(8, 14).toString('ascii').toUpperCase() : '';
             const found = [...rooms.values()]
                 .map((r) => r.published && { code: r.code, info: r.published.info, lcid: r.published.lcid })
                 .filter((g) => g && (!lcid || g.lcid === lcid) && g.info[0x67] < g.info[0x66])

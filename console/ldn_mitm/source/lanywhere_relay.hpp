@@ -97,7 +97,9 @@ namespace ams::mitm::lanywhere {
     bool PublicEnabled();  // config.ini "public=0" los desactiva
     void Publish(const void *network_info, size_t size);
     // Pregunta con una conexión aparte (no hace falta estar en una sala). Devuelve cuántos o -1.
-    int FindGroups(u64 local_communication_id, void (*found)(const char *code, const void *network_info, void *user), void *user);
+    // from_app: la pide la lista de la app (no el juego al buscar grupo); el servidor lo cuenta aparte en el panel.
+    int FindGroups(u64 local_communication_id, void (*found)(const char *code, const void *network_info, void *user), void *user,
+                   bool from_app);
 
     // El grupo abierto elegido en la app: al buscar en el juego se pide también ese (aunque no esté entre los primeros)
     // y se muestra solo él. Caduca a los 10 minutos o al unirse. Código vacío: ninguno.

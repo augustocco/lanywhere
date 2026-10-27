@@ -380,7 +380,7 @@ namespace ams::mitm::ldn {
             this->publicGroupCount = 0;
             if (lanywhere::PublicEnabled()) {
                 const u64 game = (filter.flag & ScanFilterFlag_LocalCommunicationId) ? filter.networkId.intentId.localCommunicationId : 0;
-                lanywhere::FindGroups(game, &LANDiscovery::onPublicGroup, this);
+                lanywhere::FindGroups(game, &LANDiscovery::onPublicGroup, this, false);
                 this->keepPreferredGroup();
             }
         }

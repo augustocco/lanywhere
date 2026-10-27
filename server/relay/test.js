@@ -271,9 +271,20 @@ async function main() {
             const api = JSON.parse((await get(`http://127.0.0.1:${PORT + 2}/api/stats`)).body);
             assert.ok(api.counters.roomsCreated >= 1 && api.counters.joins >= 1 && api.counters.finds >= 1, JSON.stringify(api.counters));
             assert.ok(api.counters.nicksFiltered >= 1 && api.traffic.cap === 8000e9);
+            // La lista de la app (origen 1) no cuenta como búsqueda de un juego, pero sí como "app abierta".
+            const appClient = new Client('app');
+            await appClient.connect();
+            const appFind = Buffer.alloc(15);
+            appFind[14] = 1;
+            appClient.sendFrame(0x08, appFind);
+            await appClient.frame(0x87);
+            appClient.close();
+            const after = JSON.parse((await get(`http://127.0.0.1:${PORT + 2}/api/stats`)).body);
+            assert.strictEqual(after.counters.finds, api.counters.finds);
+            assert.ok(after.now.appOpen >= 1);
             const page = await get(`http://127.0.0.1:${PORT + 2}/`);
             assert.ok(page.status === 200 && page.body.includes('LANywhere'));
-            ok('panel: /api/stats cuenta salas, entradas, búsquedas y apodos filtrados; la página se sirve');
+            ok('panel: /api/stats cuenta salas, entradas, búsquedas (aparte las de la app) y apodos filtrados; la página se sirve');
         }
 
         if (server) {

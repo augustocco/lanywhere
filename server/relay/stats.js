@@ -20,9 +20,10 @@ function create({ stateDir, port, snapshot, traffic, capBytes, paused }) {
         Object.assign(state, JSON.parse(fs.readFileSync(file, 'utf8')));
     } catch { /* primera vez */ }
 
-    const searchers = new Map();  // huella de IP (sal aleatoria, solo en memoria) → último momento en que buscó
+    // Huella de IP (sal aleatoria, solo en memoria) → último momento en que buscó: desde un juego o con la app abierta.
+    const recent = { game: new Map(), app: new Map() };
     const salt = crypto.randomBytes(16);
-    let todaySearchers = new Set();
+    let todaySeen = { game: new Set(), app: new Set() };
     let lastBytes = traffic.bytes;
     const started = Date.now();
 
@@ -31,10 +32,10 @@ function create({ stateDir, port, snapshot, traffic, capBytes, paused }) {
         const key = dayKey();
         let d = state.days[state.days.length - 1];
         if (!d || d.date !== key) {
-            d = { date: key, peakOnline: 0, bytes: 0, searchers: 0, counters: {} };
+            d = { date: key, peakOnline: 0, bytes: 0, searchers: 0, appUsers: 0, counters: {} };
             state.days.push(d);
             if (state.days.length > DAYS) state.days.splice(0, state.days.length - DAYS);
-            todaySearchers = new Set();
+            todaySeen = { game: new Set(), app: new Set() };
         }
         return d;
     }
@@ -50,17 +51,20 @@ function create({ stateDir, port, snapshot, traffic, capBytes, paused }) {
         if (state.events.length > EVENTS) state.events.splice(0, state.events.length - EVENTS);
     }
 
-    function noteSearch(ip) {
+    // kind: 'game' (un juego buscando grupo) o 'app' (la lista de la app, que se refresca sola).
+    function noteSearch(ip, kind = 'game') {
         const h = crypto.createHash('sha256').update(salt).update(ip).digest('hex').slice(0, 16);
-        searchers.set(h, Date.now());
-        todaySearchers.add(h);
-        today().searchers = todaySearchers.size;
+        const d = today();
+        recent[kind].set(h, Date.now());
+        todaySeen[kind].add(h);
+        d.searchers = todaySeen.game.size;
+        d.appUsers = todaySeen.app.size;
     }
 
-    function searching() {
+    function active(kind) {
         const limit = Date.now() - SEARCH_WINDOW_MS;
-        for (const [h, t] of searchers) if (t < limit) searchers.delete(h);
-        return searchers.size;
+        for (const [h, t] of recent[kind]) if (t < limit) recent[kind].delete(h);
+        return recent[kind].size;
     }
 
     function tick() {
@@ -93,7 +97,7 @@ function create({ stateDir, port, snapshot, traffic, capBytes, paused }) {
     function report() {
         today();
         return {
-            now: { ...snapshot(), searching: searching(), paused: paused(), uptimeMs: Date.now() - started },
+            now: { ...snapshot(), searching: active('game'), appOpen: active('app'), paused: paused(), uptimeMs: Date.now() - started },
             traffic: { month: traffic.month, bytes: traffic.bytes, cap: capBytes },
             counters: state.counters,
             today: state.days[state.days.length - 1],

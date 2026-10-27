@@ -74,7 +74,8 @@
 
   <section class="grid tiles">
     <div class="card tile"><div class="value" id="online">–</div><div class="label">Consolas en salas ahora</div><div class="sub" id="online-sub"></div></div>
-    <div class="card tile"><div class="value" id="searching">–</div><div class="label">Consolas buscando grupos</div><div class="sub">en los últimos 5 minutos</div></div>
+    <div class="card tile"><div class="value" id="searching">–</div><div class="label">Consolas buscando grupo en un juego</div><div class="sub">en los últimos 5 minutos</div></div>
+    <div class="card tile"><div class="value" id="app-open">–</div><div class="label">Consolas con la app abierta</div><div class="sub">en los últimos 5 minutos</div></div>
     <div class="card tile"><div class="value" id="rooms">–</div><div class="label">Salas activas</div><div class="sub" id="rooms-sub"></div></div>
     <div class="card tile"><div class="value" id="groups">–</div><div class="label">Grupos abiertos</div><div class="sub" id="groups-sub"></div></div>
   </section>
@@ -125,7 +126,7 @@ const COUNTERS = [
   ['groupsPublished', 'Grupos abiertos publicados'],
   ['joins', 'Entradas en salas'],
   ['resumes', 'Reconexiones (Wi-Fi cortado y recuperado)'],
-  ['finds', 'Búsquedas de grupos'],
+  ['finds', 'Búsquedas de grupo desde juegos'],
   ['nicksFiltered', 'Apodos filtrados'],
   ['rateLimited', 'Peticiones frenadas por los límites'],
   ['pausedRejects', 'Rechazos por el tope mensual'],
@@ -238,6 +239,7 @@ function render(d) {
   $('online').textContent = fmt(d.now.online);
   $('online-sub').textContent = `máximo de hoy: ${fmt(d.today.peakOnline)}`;
   $('searching').textContent = fmt(d.now.searching);
+  $('app-open').textContent = fmt(d.now.appOpen);
   $('rooms').textContent = fmt(d.now.rooms);
   $('rooms-sub').textContent = `${fmt(d.now.privateRooms)} privadas · ${fmt(d.now.rooms - d.now.privateRooms)} de grupos abiertos`;
   $('groups').textContent = fmt(d.now.groups);
@@ -265,8 +267,8 @@ function render(d) {
 
   barChart($('chart-traffic'), d.days, { label: 'Tráfico por día', value: (p) => gb(p.bytes),
     format: (p) => `${p.date} · <b>${gbText(p.bytes)}</b> · máximo ${fmt(p.peakOnline)} consolas` });
-  $('table-traffic').innerHTML = table([['Día'], ['Tráfico', 1], ['Máx. consolas', 1], ['Buscaron', 1]],
-    d.days.slice().reverse().map((p) => [p.date, gbText(p.bytes), fmt(p.peakOnline), fmt(p.searchers)]));
+  $('table-traffic').innerHTML = table([['Día'], ['Tráfico', 1], ['Máx. consolas', 1], ['Buscaron en un juego', 1], ['Abrieron la app', 1]],
+    d.days.slice().reverse().map((p) => [p.date, gbText(p.bytes), fmt(p.peakOnline), fmt(p.searchers), fmt(p.appUsers)]));
 
   $('games').innerHTML = table([['Juego'], ['Grupos', 1], ['Jugadores', 1]],
     d.now.byGame.map((g) => [esc(d.gameNames[g.game] || g.game.toUpperCase()), fmt(g.groups), fmt(g.players)]));
