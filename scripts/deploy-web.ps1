@@ -5,11 +5,16 @@
 #
 # Antes: el dominio (y www, si lo usas) debe apuntar a la IP del servidor con un registro A, y el cortafuegos del
 # proveedor debe dejar pasar TCP 80 y 443 (80 lo usa Let's Encrypt para comprobar el dominio).
+#
+# -OnlyCloudflare: si la web va detrás del proxy de Cloudflare, el servidor solo acepta 80/443 desde los rangos de
+# Cloudflare (descargados de cloudflare.com/ips-v4), para que nadie se salte el proxy atacando la IP. Las consolas
+# (11460) no se ven afectadas. Si Cloudflare añade rangos, vuelve a ejecutar el script.
 param(
     [Parameter(Mandatory)][string]$VmHost,
     [Parameter(Mandatory)][string]$Key,
     [Parameter(Mandatory)][string]$Domain,
-    [string]$User = 'ubuntu'
+    [string]$User = 'ubuntu',
+    [switch]$OnlyCloudflare
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -21,6 +26,7 @@ if ($LASTEXITCODE -ne 0) { throw 'scp falló' }
 $remote = @"
 set -e
 DOMAIN='$Domain'
+ONLY_CF='$([int][bool]$OnlyCloudflare)'
 "@ + "`n" + @'
 # Caddy desde su repositorio oficial.
 if ! command -v caddy >/dev/null 2>&1; then
@@ -68,10 +74,23 @@ $DOMAIN, www.$DOMAIN {
 	}
 }
 CADDY
-# El iptables de algunas imágenes solo deja pasar SSH: abrir 80 y 443 una vez.
+# El iptables de algunas imágenes solo deja pasar SSH: abrir 80 y 443 (a todos, o solo a Cloudflare) en una cadena
+# propia, LANYWHERE-WEB, que se rehace entera en cada ejecución.
 for p in 80 443; do
-  sudo iptables -C INPUT -p tcp --dport $p -m state --state NEW -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 5 -p tcp --dport $p -m state --state NEW -j ACCEPT
+  while sudo iptables -C INPUT -p tcp --dport $p -m state --state NEW -j ACCEPT 2>/dev/null; do
+    sudo iptables -D INPUT -p tcp --dport $p -m state --state NEW -j ACCEPT
+  done
 done
+sudo iptables -N LANYWHERE-WEB 2>/dev/null || sudo iptables -F LANYWHERE-WEB
+sudo iptables -C INPUT -p tcp -m multiport --dports 80,443 -m state --state NEW -j LANYWHERE-WEB 2>/dev/null ||   sudo iptables -I INPUT 5 -p tcp -m multiport --dports 80,443 -m state --state NEW -j LANYWHERE-WEB
+if [ "$ONLY_CF" = 1 ]; then
+  CIDRS=$(curl -fsS --max-time 20 https://www.cloudflare.com/ips-v4 | grep -E '^[0-9.]+/[0-9]+$')
+  [ "$(echo "$CIDRS" | wc -l)" -ge 10 ] || { echo 'lista de Cloudflare vacía o rara: no se cambia nada'; exit 1; }
+  for c in $CIDRS; do sudo iptables -A LANYWHERE-WEB -s "$c" -j ACCEPT; done
+  sudo iptables -A LANYWHERE-WEB -j DROP
+else
+  sudo iptables -A LANYWHERE-WEB -j ACCEPT
+fi
 sudo netfilter-persistent save >/dev/null 2>&1 || true
 sudo systemctl enable caddy >/dev/null 2>&1
 sudo systemctl reload caddy 2>/dev/null || sudo systemctl restart caddy
