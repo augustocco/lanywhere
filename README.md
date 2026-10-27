@@ -22,6 +22,14 @@ code.
 
 ![LANywhere: open groups, your nickname and private room](docs/images/app.png)
 
+### LANywhere or an online-service replacement?
+
+LANywhere is about the **local wireless mode**: it works with **any game that has one**, from day one, without patching
+games or creating accounts. Projects such as [Nextendo Network](https://nextendo.network) take a different route: they
+reimplement a game's **online mode** (worldwide matchmaking, friends, rankings) one game at a time. If your game is
+supported there, its online mode will give you the fuller experience; for everything else with local wireless play,
+use LANywhere. The two are complementary.
+
 ## Requirements
 
 - A console running **Atmosphère 1.12.x**.

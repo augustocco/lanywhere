@@ -22,6 +22,14 @@ código de 6 letras.
 
 ![LANywhere: grupos abiertos, tu apodo y sala privada](docs/images/app.png)
 
+### ¿LANywhere o un reemplazo del servicio en línea?
+
+LANywhere va del **modo inalámbrico local**: funciona con **cualquier juego que lo tenga**, desde el primer día, sin
+parchear juegos ni crear cuentas. Proyectos como [Nextendo Network](https://nextendo.network) siguen otro camino:
+reimplementan el **modo en línea** de cada juego (emparejamiento mundial, amigos, clasificaciones), uno a uno. Si tu
+juego está soportado allí, su modo en línea te dará la experiencia más completa; para todo lo demás con modo
+inalámbrico local, usa LANywhere. Los dos se complementan.
+
 ## Qué necesitas
 
 - Una consola con **Atmosphère 1.12.x**.
