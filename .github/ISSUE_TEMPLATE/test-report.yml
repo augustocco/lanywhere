@@ -1,0 +1,64 @@
+name: "Informe de prueba / Test report"
+description: "Probé un juego con LANywhere / I tried a game with LANywhere"
+title: "[Prueba / Test] <juego / game>"
+labels: ["beta-test"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ¡Gracias por probar LANywhere! Cuéntanos cómo fue, aunque haya salido mal: eso es lo que más nos ayuda.
+        Thanks for testing LANywhere! Tell us how it went, even if it failed: that helps the most.
+  - type: input
+    id: game
+    attributes:
+      label: "Juego y versión / Game and version"
+      placeholder: "Nombre del juego 1.2.3 / Game name 1.2.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: "Cómo se conectaron / How you connected"
+      options:
+        - "Grupo abierto / Open group"
+        - "Sala privada con código / Private room with code"
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: "Resultado / Result"
+      options:
+        - "✅ Funcionó: jugamos una partida completa / Worked: we played a full match"
+        - "🟡 Se vieron y entraron al grupo, pero falló al empezar / Saw each other and joined, but failed on start"
+        - "🟠 Se vio el grupo, pero no se pudo entrar / Group visible, but could not join"
+        - "❌ No se vio el grupo / Group not visible"
+        - "Otro / Other"
+    validations:
+      required: true
+  - type: input
+    id: players
+    attributes:
+      label: "Cuántas consolas y dónde / How many consoles and where"
+      placeholder: "2, Colombia y México / 2, Colombia and Mexico"
+  - type: dropdown
+    id: lag
+    attributes:
+      label: "Retraso / Lag"
+      options:
+        - "No se notó / Not noticeable"
+        - "Se notó, pero se podía jugar / Noticeable but playable"
+        - "Injugable / Unplayable"
+        - "No llegamos a jugar / We didn't get to play"
+  - type: input
+    id: versions
+    attributes:
+      label: "Versión de LANywhere y de Atmosphère / LANywhere and Atmosphère version"
+      placeholder: "LANywhere 0.1.0, Atmosphère 1.12.1"
+  - type: textarea
+    id: details
+    attributes:
+      label: "Qué pasó / What happened"
+      description: |
+        Mensajes de error, en qué momento falló... Si puedes, adjunta `sdmc:/lanywhere/relay.log`.
+        Error messages, when it failed... If you can, attach `sdmc:/lanywhere/relay.log`.

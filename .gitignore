@@ -1,0 +1,33 @@
+# Credenciales y datos personales: nunca al repositorio
+*.pem
+*.key
+id_*
+*_rsa*
+*_ed25519*
+config.json
+*.keys
+prod.keys
+title.keys
+
+# Generados
+build/
+dist/
+node_modules/
+*.log
+server/relay/grupo.bin
+server/relay/traffic.json
+
+# Binarios de la consola (se publican en Releases, no en el código)
+*.elf
+*.nro
+*.nacp
+*.nsp
+*.nso
+*.npdm
+*.ovl
+*.map
+*.lst
+console/out/
+
+# Notas de trabajo internas
+docs/PLAN.md

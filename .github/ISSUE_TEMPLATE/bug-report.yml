@@ -1,0 +1,33 @@
+name: "Fallo / Bug"
+description: "Algo no funciona en la app, el sysmodule o el servidor / Something is broken in the app, sysmodule or server"
+title: "[Fallo / Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: "Qué pasó y qué esperabas / What happened and what you expected"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Pasos para que vuelva a pasar / Steps to reproduce"
+      placeholder: |
+        1. Abrí LANywhere / Opened LANywhere
+        2. ...
+  - type: input
+    id: versions
+    attributes:
+      label: "Versión de LANywhere y de Atmosphère / LANywhere and Atmosphère version"
+      placeholder: "LANywhere 0.1.0, Atmosphère 1.12.1"
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: "Registro / Log"
+      description: |
+        Contenido de `sdmc:/lanywhere/relay.log` (no tiene datos personales: solo apodos y códigos de sala).
+        Contents of `sdmc:/lanywhere/relay.log` (no personal data: only nicknames and room codes).
+      render: text
