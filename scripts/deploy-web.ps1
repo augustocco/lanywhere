@@ -31,6 +31,11 @@ if ! command -v caddy >/dev/null 2>&1; then
   sudo apt-get update -qq
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq caddy >/dev/null
 fi
+# Caddy también entra en las actualizaciones automáticas (viene de su propio repositorio).
+printf 'Unattended-Upgrade::Origins-Pattern {
+	"origin=cloudsmith/caddy/stable";
+};
+' | sudo tee /etc/apt/apt.conf.d/51unattended-upgrades-caddy >/dev/null
 sudo rm -rf /var/www/lanywhere
 sudo install -d /var/www/lanywhere
 sudo cp -r /tmp/lanywhere-site/. /var/www/lanywhere/
