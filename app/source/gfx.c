@@ -1,4 +1,6 @@
+#include <stdio.h>
 #include <string.h>
+#include <png.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include "gfx.h"
@@ -47,6 +49,31 @@ void gfx_begin(void)
 void gfx_end(void)
 {
     framebufferEnd(&g_fb);
+}
+
+bool gfx_save_png(const char *path)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return false;
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    png_infop info = png ? png_create_info_struct(png) : NULL;
+    if (!info || setjmp(png_jmpbuf(png))) {
+        png_destroy_write_struct(&png, info ? &info : NULL);
+        fclose(f);
+        return false;
+    }
+    png_init_io(png, f);
+    // El framebuffer es RGBA_8888 en memoria: cada fila se escribe tal cual (el alfa siempre es 0xFF).
+    png_set_IHDR(png, info, GFX_W, GFX_H, 8, PNG_COLOR_TYPE_RGBA, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
+                 PNG_FILTER_TYPE_DEFAULT);
+    png_write_info(png, info);
+    for (int y = 0; y < GFX_H; y++)
+        png_write_row(png, (png_const_bytep)(g_px + (size_t)y * g_stride));
+    png_write_end(png, NULL);
+    png_destroy_write_struct(&png, &info);
+    fclose(f);
+    return true;
 }
 
 // El framebuffer es RGBA_8888 en memoria (R en el byte bajo); los colores de la API son 0xAARRGGBB.

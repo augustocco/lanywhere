@@ -380,6 +380,33 @@ typedef struct {
     int sel;  // grupo elegido en la lista, o -1
 } View;
 
+// Capturas sin mando: si aparece sdmc:/lanywhere/captura.flag (por ejemplo, copiado por FTP), el siguiente
+// fotograma se guarda como sdmc:/lanywhere/captura-N.png y el archivo se borra.
+#define CAPTURE_FLAG "sdmc:/lanywhere/captura.flag"
+static bool g_capture_pending;
+
+static bool capture_requested(void)
+{
+    struct stat st;
+    return stat(CAPTURE_FLAG, &st) == 0;
+}
+
+static void save_capture_if_requested(void)
+{
+    if (!g_capture_pending)
+        return;
+    g_capture_pending = false;
+    char path[64];
+    struct stat st;
+    for (int n = 1; n < 1000; n++) {
+        snprintf(path, sizeof(path), "sdmc:/lanywhere/captura-%d.png", n);
+        if (stat(path, &st) != 0)
+            break;
+    }
+    gfx_save_png(path);
+    remove(CAPTURE_FLAG);
+}
+
 static void status_pill(const View *v)
 {
     const char *text = TR("Conectado", "Connected");
@@ -515,7 +542,7 @@ static void side_column(const View *v)
     step(x + 24, y + 146, 3, TR("Crea un grupo o únete a uno", "Create a group or join one"));
     y += 192 + 20;
 
-    const int room_h = v->private_room ? 190 : v->st.state == StateError && v->st.error[0] ? 176 : 140;
+    const int room_h = v->private_room ? 172 : v->st.state == StateError && v->st.error[0] ? 176 : 140;
     gfx_round_rect(x, y, SIDE_W, room_h, 18, C_PANEL);
     gfx_text(x + 24, y + 20, 24, C_TEXT, TR("Sala privada", "Private room"));
     if (v->private_room) {
@@ -529,10 +556,10 @@ static void side_column(const View *v)
         }
         char who[64];
         if (v->st.member_count == 1)
-            snprintf(who, sizeof(who), "%s", TR("Solo tú, pásale el código a tu amigo", "Just you: share the code with a friend"));
+            snprintf(who, sizeof(who), "%s", TR("Solo tú: pásale el código", "Just you: share the code"));
         else
             snprintf(who, sizeof(who), TR("%u jugadores en la sala", "%u players in the room"), v->st.member_count);
-        gfx_text_fit(x + 24, y + 140, 20, C_DIM, who, SIDE_W - 48);
+        gfx_text_fit(x + 24, y + 134, 20, C_DIM, who, SIDE_W - 48);
     } else if (v->st.state == StateInRoom) {
         gfx_text_fit(x + 24, y + 66, 20, C_DIM, TR("Ahora estás en un grupo abierto.", "You are in an open group right now."), SIDE_W - 48);
     } else {
@@ -597,6 +624,7 @@ static void draw(const View *v)
         x += w + 28;
     }
 
+    save_capture_if_requested();
     gfx_end();
 }
 
@@ -719,7 +747,7 @@ int main(int argc, char **argv)
     v.sel = -1;
     lanywhere_nickname(v.nickname, sizeof(v.nickname));
     View last = {0};
-    u64 last_draw = 0;
+    u64 last_draw = 0, last_capture_check = 0;
     bool dirty = true;
     while (appletMainLoop()) {
         padUpdate(&pad);
@@ -825,6 +853,13 @@ int main(int argc, char **argv)
         if (down || status_changed || v.pub != last.pub || strcmp(v.nickname, last.nickname) != 0 ||
             strcmp(v.message, last.message) != 0)
             dirty = true;
+        if (now / 1000 != last_capture_check) {
+            last_capture_check = now / 1000;
+            if (capture_requested()) {
+                g_capture_pending = true;
+                dirty = true;
+            }
+        }
         if (dirty || now - last_draw >= 5000) {
             draw(&v);
             last = v;

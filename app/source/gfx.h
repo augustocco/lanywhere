@@ -19,6 +19,8 @@ void gfx_exit(void);
 
 void gfx_begin(void);  // empieza un fotograma
 void gfx_end(void);    // lo muestra
+// Guarda el fotograma en curso (entre gfx_begin y gfx_end) como PNG.
+bool gfx_save_png(const char *path);
 
 void gfx_clear_gradient(u32 top, u32 bottom);
 void gfx_rect(int x, int y, int w, int h, u32 color);  // con mezcla alfa

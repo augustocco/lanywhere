@@ -20,6 +20,8 @@ código de 6 letras.
 > lleva por internet el tráfico de red del modo inalámbrico local: no modifica juegos, no usa claves ni cuentas, y no
 > da acceso a ningún servicio en línea oficial.
 
+![LANywhere: grupos abiertos, tu apodo y sala privada](docs/images/app.png)
+
 ## Qué necesitas
 
 - Una consola con **Atmosphère 1.12.x**.
@@ -55,6 +57,8 @@ Todo se puede usar también con la pantalla táctil.
 | − | Cambiar tu apodo |
 
 Mientras estás en una sala privada, tus grupos solo los ve esa sala.
+
+![Sala privada con su código](docs/images/sala-privada.png)
 
 ## Seguridad y privacidad
 

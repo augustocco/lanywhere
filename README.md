@@ -20,6 +20,8 @@ code.
 > of the local wireless mode over the internet: it does not modify games, does not use keys or accounts, and does not
 > give access to any official online service.
 
+![LANywhere: open groups, your nickname and private room](docs/images/app.png)
+
 ## Requirements
 
 - A console running **Atmosphère 1.12.x**.
@@ -56,6 +58,8 @@ Everything can be used with the touch screen too.
 | − | Change your nickname |
 
 While you are in a private room, your groups are only visible to that room.
+
+![Private room with its code](docs/images/sala-privada.png)
 
 ## Safety and privacy
 
