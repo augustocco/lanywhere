@@ -36,12 +36,23 @@ sudo install -d /var/www/lanywhere
 sudo cp -r /tmp/lanywhere-site/. /var/www/lanywhere/
 rm -rf /tmp/lanywhere-site
 sudo tee /etc/caddy/Caddyfile >/dev/null <<CADDY
+{
+	# Solo HTTP/1.1 y HTTP/2: el cortafuegos no abre UDP 443 (HTTP/3).
+	servers {
+		protocols h1 h2
+	}
+}
 $DOMAIN, www.$DOMAIN {
 	encode gzip
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
 		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+		# La página es un solo archivo con su CSS y su JS dentro, y solo pide datos a sí misma.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+		-Server
 	}
 	handle /api/public* {
 		reverse_proxy 127.0.0.1:11463
