@@ -44,8 +44,11 @@ code.
 The **LANywhere** app shows the groups open right now, your nickname and the private room. It follows the console's
 language: Spanish for Spanish, English otherwise.
 
+Everything can be used with the touch screen too.
+
 | Button | What it does |
 |---|---|
+| Tap a group (or ↑ ↓) | Pick an open group; **A** (or tapping it again) opens its game, and that group is the one waiting for you in "search for groups" |
 | A | Create a private room: you get a code to share with your friend |
 | Y | Join a private room with its code |
 | B | Leave the private room |

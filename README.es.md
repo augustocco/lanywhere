@@ -43,8 +43,11 @@ código de 6 letras.
 
 La app **LANywhere** muestra los grupos abiertos ahora, tu apodo y la sala privada:
 
+Todo se puede usar también con la pantalla táctil.
+
 | Botón | Qué hace |
 |---|---|
+| Tocar un grupo (o ↑ ↓) | Elegir un grupo abierto; **A** (o tocarlo otra vez) abre su juego, y ese grupo es el que te espera en "buscar grupo" |
 | A | Crear una sala privada: te da un código para pasárselo a tu amigo |
 | Y | Unirse a una sala privada con su código |
 | B | Salir de la sala privada |
