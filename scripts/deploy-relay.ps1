@@ -80,6 +80,10 @@ while sudo iptables -C INPUT -p tcp --dport 11451 -m state --state NEW -j ACCEPT
 # LAN Play (emuladores): UDP 11451.
 sudo iptables -C INPUT -p udp --dport 11451 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 5 -p udp --dport 11451 -j ACCEPT
 sudo netfilter-persistent save >/dev/null
+# Sin el bit DF en UDP: la interfaz de la nube tiene MTU 9000 y un paquete grande con DF se pierde por internet (el
+# aviso ICMP no siempre vuelve). Sin DF, los routers lo fragmentan y llega (LAN Play manda hasta ~1530 bytes).
+echo 'net.ipv4.ip_no_pmtu_disc = 1' | sudo tee /etc/sysctl.d/60-lanywhere-udp.conf >/dev/null
+sudo sysctl -q -p /etc/sysctl.d/60-lanywhere-udp.conf
 # Parches de seguridad de Ubuntu automáticos.
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unattended-upgrades >/dev/null
 printf 'APT::Periodic::Update-Package-Lists "1";

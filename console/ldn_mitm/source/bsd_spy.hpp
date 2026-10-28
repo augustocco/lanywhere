@@ -28,6 +28,9 @@
     AMS_SF_METHOD_INFO(C, H, 21, Result, SetSockOpt, (ams::sf::Out<s32> out_ret, ams::sf::Out<s32> out_errno, s32 fd, s32 level, s32 optname,           \
                                                    const ams::sf::InAutoSelectBuffer &optval),                                                          \
                                                   (out_ret, out_errno, fd, level, optname, optval))                                                     \
+    AMS_SF_METHOD_INFO(C, H, 10, Result, Send,    (ams::sf::Out<s32> out_ret, ams::sf::Out<s32> out_errno, s32 fd, s32 flags,                            \
+                                                   const ams::sf::InAutoSelectBuffer &data),                                                            \
+                                                  (out_ret, out_errno, fd, flags, data))                                                                \
     AMS_SF_METHOD_INFO(C, H, 11, Result, SendTo,  (ams::sf::Out<s32> out_ret, ams::sf::Out<s32> out_errno, s32 fd, s32 flags,                            \
                                                    const ams::sf::InAutoSelectBuffer &data, const ams::sf::InAutoSelectBuffer &addr),                   \
                                                   (out_ret, out_errno, fd, flags, data, addr))                                                          \
@@ -60,6 +63,7 @@ namespace ams::mitm::bsd {
                             const sf::OutAutoSelectBuffer &data, const sf::OutAutoSelectBuffer &addr);
             Result Fcntl(sf::Out<s32> out_ret, sf::Out<s32> out_errno, s32 fd, s32 cmd, s32 arg);
             Result SetSockOpt(sf::Out<s32> out_ret, sf::Out<s32> out_errno, s32 fd, s32 level, s32 optname, const sf::InAutoSelectBuffer &optval);
+            Result Send(sf::Out<s32> out_ret, sf::Out<s32> out_errno, s32 fd, s32 flags, const sf::InAutoSelectBuffer &data);
             Result SendTo(sf::Out<s32> out_ret, sf::Out<s32> out_errno, s32 fd, s32 flags, const sf::InAutoSelectBuffer &data,
                           const sf::InAutoSelectBuffer &addr);
             Result Bind(sf::Out<s32> out_ret, sf::Out<s32> out_errno, s32 fd, const sf::InAutoSelectBuffer &addr);

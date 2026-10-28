@@ -25,6 +25,8 @@ namespace ams::mitm::bsd {
             u64 program_id;
             s32 type, protocol;
             u16 bound_port;  // el de bind(): los paquetes de la sala para ese puerto son de este socket
+            u32 peer_ip;     // connect() a otro miembro de la sala (UDP): send() va por el servidor
+            u16 peer_port;
             u32 sent_packets;
             u64 sent_bytes;
             Destination dest[MaxDestinations];
@@ -144,6 +146,10 @@ namespace ams::mitm::bsd {
 
         struct Out { s32 ret; s32 err; };
         constexpr s32 ErrnoAgain = 11;  // EAGAIN en el bsd de la consola
+        struct PollFd { s32 fd; s16 events; s16 revents; };
+        constexpr s16 PollIn = 0x0001, PollRdNorm = 0x0040;
+        constexpr s32 PollSliceMs = 5;
+        constexpr size_t MaxPollFds = 64;
 
         ssize_t TakeRoomPacket(s32 fd, u64 program_id, void *buffer, size_t size, sockaddr_in *from);
 
@@ -151,12 +157,48 @@ namespace ams::mitm::bsd {
 
     Result BsdSpyService::Poll(sf::Out<s32> out_ret, sf::Out<s32> out_errno, u32 nfds, s32 timeout, const sf::InAutoSelectBuffer &fds_in,
                                const sf::OutAutoSelectBuffer &fds_out) {
-        const struct { u32 nfds; s32 timeout; } in = { nfds, timeout };
+        // Los paquetes de la sala no pasan por el socket real, así que el poll de la consola no despierta con ellos:
+        // si el juego espera datos en un socket de la sala, se espera a trozos cortos mirando también la cola.
+        const size_t n = std::min<size_t>({ nfds, fds_in.GetSize() / sizeof(PollFd), fds_out.GetSize() / sizeof(PollFd), MaxPollFds });
+        const PollFd *in_fds = reinterpret_cast<const PollFd *>(fds_in.GetPointer());
+        u16 ports[MaxPollFds] = {};
+        bool room = false;
+        if (lanywhere::InRoom()) {
+            std::scoped_lock lk(g_lock);
+            for (size_t i = 0; i < n; i++) {
+                if (!(in_fds[i].events & (PollIn | PollRdNorm))) continue;
+                if (auto *s = Find(in_fds[i].fd, m_client_info.program_id.value, false); s != nullptr && s->bound_port) {
+                    ports[i] = s->bound_port;
+                    room = true;
+                }
+            }
+        }
+
+        const os::Tick start = os::GetSystemTick();
         Out out = {};
-        R_TRY(serviceDispatchInOut(m_forward_service.get(), 6, in, out,
-            .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_In, SfBufferAttr_HipcAutoSelect | SfBufferAttr_Out },
-            .buffers = { { fds_in.GetPointer(), fds_in.GetSize() }, { fds_out.GetPointer(), fds_out.GetSize() } },
-        ));
+        for (;;) {
+            s32 slice = timeout;
+            if (room && timeout != 0) {
+                const s64 elapsed = (os::GetSystemTick() - start).ToTimeSpan().GetMilliSeconds();
+                slice = timeout < 0 ? PollSliceMs : static_cast<s32>(std::clamp<s64>(timeout - elapsed, 0, PollSliceMs));
+            }
+            const struct { u32 nfds; s32 timeout; } in = { nfds, slice };
+            R_TRY(serviceDispatchInOut(m_forward_service.get(), 6, in, out,
+                .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_In, SfBufferAttr_HipcAutoSelect | SfBufferAttr_Out },
+                .buffers = { { fds_in.GetPointer(), fds_in.GetSize() }, { fds_out.GetPointer(), fds_out.GetSize() } },
+            ));
+            if (!room || out.ret < 0) break;
+            PollFd *out_fds = reinterpret_cast<PollFd *>(fds_out.GetPointer());
+            s32 ready = 0;
+            for (size_t i = 0; i < n; i++) {
+                if (ports[i] && lanywhere::HasData(ports[i])) {
+                    out_fds[i].revents |= in_fds[i].events & (PollIn | PollRdNorm);
+                }
+                if (out_fds[i].revents) ready++;
+            }
+            out.ret = ready;
+            if (ready > 0 || timeout == 0 || (timeout > 0 && (os::GetSystemTick() - start).ToTimeSpan().GetMilliSeconds() >= timeout)) break;
+        }
         out_ret.SetValue(out.ret);
         out_errno.SetValue(out.err);
 
@@ -323,6 +365,42 @@ namespace ams::mitm::bsd {
         R_SUCCEED();
     }
 
+    Result BsdSpyService::Send(sf::Out<s32> out_ret, sf::Out<s32> out_errno, s32 fd, s32 flags, const sf::InAutoSelectBuffer &data) {
+        if (lanywhere::InRoom()) {
+            u32 peer_ip = 0;
+            u16 peer_port = 0, src_port = 0;
+            {
+                std::scoped_lock lk(g_lock);
+                if (auto *s = Find(fd, m_client_info.program_id.value, false); s != nullptr && s->peer_ip) {
+                    peer_ip = s->peer_ip;
+                    peer_port = s->peer_port;
+                    src_port = s->bound_port;
+                    s->sent_packets++;
+                    s->sent_bytes += data.GetSize();
+                }
+            }
+            if (peer_ip) {
+                lanywhere::SendData(peer_ip, src_port, peer_port, data.GetPointer(), data.GetSize());
+                out_ret.SetValue(static_cast<s32>(data.GetSize()));
+                out_errno.SetValue(0);
+                R_SUCCEED();
+            }
+        }
+        const struct { s32 fd, flags; } in = { fd, flags };
+        Out out = {};
+        R_TRY(serviceDispatchInOut(m_forward_service.get(), 10, in, out,
+            .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_In },
+            .buffers = { { data.GetPointer(), data.GetSize() } },
+        ));
+        out_ret.SetValue(out.ret);
+        out_errno.SetValue(out.err);
+
+        std::scoped_lock lk(g_lock);
+        WriteLine("[%016lx] send(fd %d, %zu bytes) = %d (errno %d)", m_client_info.program_id.value, fd, data.GetSize(), out.ret, out.err);
+        MaybeSummary();
+        R_SUCCEED();
+    }
+
     Result BsdSpyService::SendTo(sf::Out<s32> out_ret, sf::Out<s32> out_errno, s32 fd, s32 flags, const sf::InAutoSelectBuffer &data,
                                  const sf::InAutoSelectBuffer &addr) {
         // En una sala, lo que va a la red virtual (otro miembro o broadcast) sale por el servidor.
@@ -413,6 +491,23 @@ namespace ams::mitm::bsd {
     }
 
     Result BsdSpyService::Connect(sf::Out<s32> out_ret, sf::Out<s32> out_errno, s32 fd, const sf::InAutoSelectBuffer &addr) {
+        // UDP "conectado" a otro miembro de la sala: no hay ruta real; send() lo manda por el servidor.
+        if (lanywhere::InRoom() && addr.GetSize() >= sizeof(sockaddr_in)) {
+            const sockaddr_in *a = reinterpret_cast<const sockaddr_in *>(addr.GetPointer());
+            const u32 dst = ntohl(a->sin_addr.s_addr);
+            std::scoped_lock lk(g_lock);
+            auto *s = Find(fd, m_client_info.program_id.value, false);
+            if (s != nullptr && s->type == 2 && lanywhere::IsVirtual(dst)) {
+                s->peer_ip = dst;
+                s->peer_port = ntohs(a->sin_port);
+                char text[48];
+                WriteLine("[%016lx] connect(fd %d, %s) a la sala (puerto local %u)", m_client_info.program_id.value, fd,
+                          FormatAddr(text, sizeof(text), addr.GetPointer(), addr.GetSize()), s->bound_port);
+                out_ret.SetValue(0);
+                out_errno.SetValue(0);
+                R_SUCCEED();
+            }
+        }
         Out out = {};
         R_TRY(serviceDispatchInOut(m_forward_service.get(), 14, fd, out,
             .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_In },

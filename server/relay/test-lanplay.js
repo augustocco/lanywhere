@@ -17,6 +17,7 @@ const MAGIC = 0x594e414c;
 const LDN = { SCAN: 1, SCAN_RESP: 2, CONNECT: 3, SYNC: 4, DISCONNECT: 5 };
 const NI = 0x480, NODES = 0x68, NS = 0x40;
 const GAME = 0x0100000000abc000n;
+const NET13 = Buffer.from([1]);  // último byte de CREATE/JOIN: el cliente entiende la red 10.13
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ipStr = (ip) => [ip >>> 24, (ip >>> 16) & 255, (ip >>> 8) & 255, ip & 255].join('.');
 async function until(fn, ms = 4000, what = 'condición') {
@@ -93,8 +94,21 @@ class Emu {
     udp(dst, sport, dport, data) { this.sendIp(L.udpPacket(this.ip, sport, dst, dport, data)); }
     onMsg(m) {
         if (m[0] !== L.P.IPV4) return;
-        const p = L.parseIpv4(m.subarray(1));
+        this.maxMsg = Math.max(this.maxMsg || 0, m.length);
+        let p = L.parseIpv4(m.subarray(1));
         if (!p) return;
+        if (p.mf || p.off) {  // fragmento IP: como Ryujinx, se reensambla
+            const key = `${p.src}-${p.id}`;
+            const r = (this.frags ||= new Map()).get(key) || { parts: [], total: -1 };
+            this.frags.set(key, r);
+            r.parts.push(p);
+            if (!p.mf) r.total = p.off + p.body.length;
+            if (r.total < 0 || r.parts.reduce((n, x) => n + x.body.length, 0) < r.total) return;
+            this.frags.delete(key);
+            const body = Buffer.alloc(r.total);
+            for (const x of r.parts) x.body.copy(body, x.off);
+            p = { ...p, body, mf: false, off: 0 };
+        }
         if (p.proto === 17) {
             const sport = p.body.readUInt16BE(0), dport = p.body.readUInt16BE(2), data = p.body.subarray(8);
             if (dport === 11452) {
@@ -171,7 +185,7 @@ async function main() {
         await host.connect();
         const g = Buffer.alloc(8); g.writeBigUInt64LE(GAME);
         const nick = Buffer.alloc(32); nick.write('Zorro Audaz 12');
-        host.send(0x01, Buffer.concat([g, nick]));
+        host.send(0x01, Buffer.concat([g, nick, NET13]));  // CREATE de un sysmodule que entiende la red 10.13
         host.onRoom(await host.frame(0x81));
         await host.register();
         host.send(0x07, networkInfo(host.ip, 'Zorro Audaz 12'));  // PUBLISH
@@ -190,8 +204,8 @@ async function main() {
         const relayIn = await host.frame(0x84, (b) => b[1] === LDN.CONNECT);
         const stationIndex = relayIn[0];
         const node = relayIn.subarray(2);
-        assert.strictEqual(node.readUInt32LE(0) >>> 24, 10, 'NodeInfo con IP de la sala');
-        assert.strictEqual(node.readUInt32LE(0) & 0xffffff00, (10 << 24 | 114 << 16) >>> 0);
+        assert.strictEqual(host13, host.ip, 'la consola tiene la misma IP 10.13 en la sala y en LAN Play');
+        assert.strictEqual(node.readUInt32LE(0), emu.ip, 'el emulador entra en la sala con su propia IP');
         ok(`la unión llega a la consola como un miembro más (miembro ${stationIndex})`);
 
         // La consola sincroniza el grupo: el emulador lo recibe con sus IPs 10.13.
@@ -201,17 +215,51 @@ async function main() {
         const got = await until(() => emu.syncs && emu.syncs[0], 3000, 'SyncNetwork en el emulador');
         assert.strictEqual(got.readUInt32LE(NODES), host13);
         assert.strictEqual(got.readUInt32LE(NODES + NS), emu.ip, 'la estación aparece con su propia IP 10.13');
-        ok('el emulador recibe la sincronización con las IPs traducidas');
+        ok('el emulador recibe la sincronización con las mismas IPs');
 
         // Juego: emulador → consola y consola → emulador.
         emu.udp(host13, 12345, 12345, Buffer.from('hola consola'));
         const d1 = await until(() => host.data.shift(), 3000, 'datos en la consola');
         assert.strictEqual(d1.subarray(13).toString(), 'hola consola');
-        assert.strictEqual(d1.readUInt32LE(5), node.readUInt32LE(0), 'origen = IP de sala del emulador');
+        assert.strictEqual(d1.readUInt32LE(5), emu.ip, 'origen = IP del emulador');
         host.sendData(node.readUInt32LE(0), 12345, 12345, 'hola emulador');
         const d2 = await until(() => emu.udpIn.shift(), 3000, 'datos en el emulador');
         assert.ok(d2.text === 'hola emulador' && d2.src === host13 && d2.dst === emu.ip);
-        ok('los paquetes del juego van y vuelven traducidos');
+        host.sendData((0x0a0d0000 | 0xffff) >>> 0, 12345, 12345, 'broadcast de consola');
+        const d2b = await until(() => emu.udpIn.find((x) => x.text === 'broadcast de consola'), 3000, 'broadcast en el emulador');
+        assert.ok(d2b.src === host13 && d2b.dst === L.BCAST);
+        ok('los paquetes del juego van y vuelven (también el broadcast de la consola)');
+
+        // Paquetes grandes: Ryujinx parte en fragmentos IP los de más de 1480 bytes; la consola recibe el entero.
+        const big = Buffer.alloc(1472, 7); big.write('grande');
+        const whole = L.udpPacket(emu.ip, 12345, host13, 12345, big);
+        const payload = whole.subarray(20);
+        for (const [off, end, more] of [[0, 1480, true], [1480, payload.length, false]]) {
+            const h = Buffer.from(whole.subarray(0, 20));
+            h.writeUInt16BE(20 + end - off, 2); h.writeUInt16BE(0x4242, 4);
+            h.writeUInt16BE((more ? 0x2000 : 0) | (off / 8), 6); h.writeUInt16BE(0, 10);
+            emu.sendIp(Buffer.concat([h, payload.subarray(off, end)]));
+        }
+        const d5 = await until(() => host.data.find((m) => m.subarray(13, 19).toString() === 'grande'), 3000, 'paquete fragmentado en la consola');
+        assert.strictEqual(d5.length - 13, 1472);
+        host.sendData(emu.ip, 12345, 12345, 'enorme'.padEnd(1472, '.'));
+        const d6 = await until(() => emu.udpIn.find((x) => x.text.startsWith('enorme')), 3000, 'paquete de 1472 en el emulador');
+        assert.strictEqual(d6.text.length, 1472);
+        assert.ok(emu.maxMsg <= 1401, `ningún datagrama de LAN Play pasa de 1401 bytes (${emu.maxMsg})`);
+        ok('paquetes de 1472 bytes en los dos sentidos (fragmentos IP del emulador reensamblados)');
+
+        // Fragmentos de LAN Play (el cliente parte el paquete IPv4 entero, con cabecera de 16 bytes).
+        const whole2 = L.udpPacket(emu.ip, 12345, host13, 12345, Buffer.from('partido'.padEnd(1200, '-')));
+        for (let part = 0; part < 3; part++) {
+            const chunk = whole2.subarray(part * 500, (part + 1) * 500);
+            const fh = Buffer.alloc(16);
+            fh.writeUInt32BE(emu.ip, 0); fh.writeUInt32BE(host13, 4); fh.writeUInt16LE(77, 8);
+            fh[10] = part; fh[11] = 3; fh.writeUInt16LE(chunk.length, 12); fh.writeUInt16LE(500, 14);
+            emu.sock.send(Buffer.concat([Buffer.from([L.P.IPV4_FRAG]), fh, chunk]), LP_PORT, '127.0.0.1');
+        }
+        const d7 = await until(() => host.data.find((m) => m.subarray(13, 20).toString() === 'partido'), 3000, 'fragmentos de LAN Play en la consola');
+        assert.strictEqual(d7.length - 13, 1200);
+        ok('fragmentos de LAN Play hacia una consola, reensamblados');
 
         // ---------- B: grupo de un emulador, una consola se une ----------
         const emu2 = new Emu(0x0a0d0909, 'ryu-dos');
@@ -237,7 +285,13 @@ async function main() {
         ok(`el grupo del emulador se publica como grupo abierto (sala ${code})`);
 
         const nick2 = Buffer.alloc(32); nick2.write('Lobo Feliz 33');
-        finder.send(0x02, Buffer.concat([Buffer.from(code), nick2, lc]));
+        // Un sysmodule antiguo (sin el byte de la red 10.13) no entra: se le pide actualizar.
+        const old = new Console('Viejo');
+        await old.connect();
+        old.send(0x02, Buffer.concat([Buffer.from(code), nick2, lc]));
+        assert.strictEqual((await old.frame(0x85))[0], 8);
+        old.close();
+        finder.send(0x02, Buffer.concat([Buffer.from(code), nick2, lc, NET13]));
         finder.onRoom(await finder.frame(0x81));
         await finder.register();
         finder.send(0x04, Buffer.concat([Buffer.from([0, LDN.CONNECT]), nodeInfo(finder.ip, 'Lobo Feliz 33')]));
@@ -246,9 +300,10 @@ async function main() {
         assert.strictEqual(info2[0x67], 2);
         assert.strictEqual(info2.readUInt32LE(NODES + NS), finder.ip, 'la consola aparece con su IP de sala');
         const hostRoomIp = info2.readUInt32LE(NODES);
-        assert.strictEqual(hostRoomIp & 0xffffff00, (10 << 24 | 114 << 16) >>> 0);
+        assert.strictEqual(hostRoomIp, emu2.ip, 'el anfitrión emulador con su propia IP');
+        assert.strictEqual(finder.ip & 0xffff0000, 0x0a0d0000, 'la consola, con una IP 10.13');
         assert.strictEqual(emu2.stations.length, 1);
-        ok('la consola se une al grupo del emulador (TCP abierto por la pasarela, sincronización traducida)');
+        ok('la consola se une al grupo del emulador (TCP abierto por la pasarela)');
 
         finder.sendData(hostRoomIp, 12345, 12345, 'ping desde consola');
         const d3 = await until(() => emu2.udpIn.find((x) => x.text === 'ping desde consola'), 3000, 'datos en el emulador anfitrión');
@@ -273,6 +328,21 @@ async function main() {
         emu.sendIp(L.ipv4(emu.ip, host13, 1, icmp));
         await until(() => echoed, 2000, 'eco ICMP');
         ok('responde al ping en sus IPs (Ryujinx no las reutiliza)');
+
+        // ---------- E: una sala de un sysmodule antiguo sigue en 10.114.0.x y no se cruza con LAN Play ----------
+        const legacy = new Console('Antiguo');
+        await legacy.connect();
+        legacy.send(0x01, Buffer.concat([g, nick]));
+        legacy.onRoom(await legacy.frame(0x81));
+        assert.strictEqual(legacy.ip, ((10 << 24) | (114 << 16) | 1) >>> 0);
+        legacy.send(0x07, networkInfo(legacy.ip, 'Antiguo'));
+        await sleep(100);
+        emu.scanResults.length = 0;
+        emu.udp(L.BCAST, 11452, 11452, L.ldnFrame(L.LT.SCAN));
+        await sleep(500);
+        assert.ok(!emu.scanResults.some((r) => r.from === legacy.ip));
+        legacy.close();
+        ok('las salas de sysmodules antiguos siguen en 10.114.0.x, sin LAN Play');
 
         for (const x of [host, finder]) x.close();
         emu.close(); emu2.close();

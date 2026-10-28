@@ -20,7 +20,7 @@ namespace ams::mitm::lanywhere {
     constexpr size_t CodeLength = 6;
     constexpr size_t NickLength = 32;
     constexpr size_t MaxMembers = 8;
-    constexpr size_t MaxPayload = 1400;
+    constexpr size_t MaxPayload = 1472;  // lo que cabe en un datagrama UDP con MTU 1500 (como en una LAN)
 
     enum class RelayState : u8 { Idle = 0, Connecting = 1, InRoom = 2, Error = 3 };
 
@@ -55,11 +55,12 @@ namespace ams::mitm::lanywhere {
     };
     static_assert(sizeof(GroupSummary) == 0x40);
 
-    // 10.114.0.0/24: la red virtual de una sala.
+    // La red virtual de una sala: 10.13.0.0/16 (la misma de LAN Play, así los emuladores ven las mismas IPs que las
+    // consolas), o 10.114.0.0/24 en salas de servidores antiguos. La decide la IP que da el servidor.
     constexpr u32 VirtualNet = (10u << 24) | (114u << 16);
-    constexpr bool IsVirtual(u32 ip) {
-        return (ip & 0xFFFFFF00u) == VirtualNet || ip == 0xFFFFFFFFu;
-    }
+    constexpr u32 LanPlayNet = (10u << 24) | (13u << 16);
+    u32 Netmask();
+    bool IsVirtual(u32 ip);
 
     // El nombre en la sala es siempre el apodo (config.ini "apodo="; uno al azar si no hay), nunca el nombre de
     // usuario de la consola.
@@ -78,6 +79,8 @@ namespace ams::mitm::lanywhere {
 
     // Saca de la cola el primer paquete para ese puerto: devuelve su tamaño (truncado a `size`) o -1 si no hay.
     ssize_t ReceiveData(u16 port, void *buffer, size_t size, u32 *src_ip, u16 *src_port);
+    // Hay algún paquete esperando para ese puerto.
+    bool HasData(u16 port);
 
     // Control de ldn (búsqueda, unión y sincronización de grupos) entre miembros de la sala, por la conexión TCP
     // con el servidor: llega entero y en orden. Cada mensaje es [LdnMsg][datos].
@@ -114,8 +117,6 @@ namespace ams::mitm::lanywhere {
     ssize_t TakeControl(u8 *from, LdnMsg *msg, void *buffer, size_t size);
 
     // Índice del miembro con esa IP virtual, o -1.
-    constexpr int MemberOfIp(u32 ip) {
-        return (ip & 0xFFFFFF00u) == VirtualNet && (ip & 0xFF) >= 1 && (ip & 0xFF) <= MaxMembers ? static_cast<int>(ip & 0xFF) - 1 : -1;
-    }
+    int MemberOfIp(u32 ip);
 
 }

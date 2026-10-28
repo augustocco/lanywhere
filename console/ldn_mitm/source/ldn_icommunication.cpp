@@ -92,7 +92,7 @@ namespace ams::mitm::ldn {
         // LANywhere: en una sala, el juego vive en la red virtual.
         if (lanywhere::InRoom()) {
             address.SetValue(lanywhere::MyIp());
-            netmask.SetValue(0xFFFFFF00);
+            netmask.SetValue(lanywhere::Netmask());
             rc = 0;
         }
 

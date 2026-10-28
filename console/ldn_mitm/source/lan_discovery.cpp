@@ -229,10 +229,12 @@ namespace ams::mitm::ldn {
         u32 ip;
         Result rc = 0;
         if (lanywhere::InRoom()) {
-            // 02:xx:xx:xx:xx:miembro, con xx de la sala: cada grupo abierto tiene un BSSID distinto.
+            // 02:xx:xx:xx:ip:ip, con xx de la sala: cada grupo abierto tiene un BSSID distinto.
             const u32 tag = lanywhere::RoomTag();
             memcpy(mac->raw + 1, &tag, sizeof(tag));
-            mac->raw[5] = lanywhere::MyIp() & 0xFF;
+            const u32 my_ip = lanywhere::MyIp();
+            mac->raw[4] = (my_ip >> 8) & 0xFF;
+            mac->raw[5] = my_ip & 0xFF;
             return 0;
         } else if (R_SUCCEEDED(rc = nifmGetCurrentIpAddress(&ip))) {
             ip = ntohl(ip);

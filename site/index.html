@@ -81,6 +81,7 @@
   .step .n { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; margin-bottom: 10px; }
   .step h3 { margin: 0 0 6px; font-size: 17px; }
   .step p { margin: 0; color: var(--text-2); font-size: 15px; }
+  .step code { background: var(--accent-soft); color: var(--text); border-radius: 6px; padding: 1px 6px; font-size: 14px; }
 
   .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
   .feature { padding: 4px 0; }
@@ -103,7 +104,7 @@
   <header class="top">
     <a class="brand" href="#"><img src="icon.png" alt="">LANywhere</a>
     <div class="top-right">
-      <nav><a href="#grupos" data-i18n="nav.groups">Grupos abiertos</a><a href="#empezar" data-i18n="nav.start">Empezar</a><a href="https://github.com/augustocco/lanywhere">GitHub</a></nav>
+      <nav><a href="#grupos" data-i18n="nav.groups">Grupos abiertos</a><a href="#empezar" data-i18n="nav.start">Empezar</a><a href="#emulador" data-i18n="nav.emu">Desde un PC</a><a href="https://github.com/augustocco/lanywhere">GitHub</a></nav>
       <button class="lang" id="lang" type="button">English</button>
     </div>
   </header>
@@ -112,7 +113,7 @@
     <div>
       <span class="beta" data-i18n="beta">Beta pública</span>
       <h1 data-i18n-html="hero.title">Tu multijugador local, <em>ahora en línea</em>.</h1>
-      <p data-i18n="hero.text">El modo inalámbrico local de tus juegos, con gente de cualquier lugar. Sin PC, sin configurar nada y sin escribir IPs: creas un grupo en el juego y el mundo se puede unir.</p>
+      <p data-i18n="hero.text">El modo inalámbrico local de tus juegos, con gente de cualquier lugar. Sin PC, sin configurar nada y sin escribir IPs: creas un grupo en el juego y el mundo se puede unir. Desde la consola o desde un PC con Ryujinx.</p>
       <div class="cta">
         <a class="btn primary" href="https://github.com/augustocco/lanywhere/releases/latest" data-i18n="cta.download">Descargar</a>
         <a class="btn ghost" href="#empezar" data-i18n="cta.how">Cómo funciona</a>
@@ -121,7 +122,7 @@
     <div class="live" aria-live="polite">
       <div class="head"><span class="dot off" id="dot"></span><span id="status" data-i18n="status.loading">Conectando con la red…</span></div>
       <div class="nums">
-        <div class="num"><div class="v" id="online">–</div><div class="l" data-i18n="num.online">consolas conectadas</div></div>
+        <div class="num"><div class="v" id="online">–</div><div class="l" data-i18n="num.online">consolas y PCs conectados</div></div>
         <div class="num"><div class="v" id="groups">–</div><div class="l" data-i18n="num.groups">grupos abiertos</div></div>
         <div class="num"><div class="v" id="players">–</div><div class="l" data-i18n="num.players">jugadores en grupos</div></div>
       </div>
@@ -149,9 +150,19 @@
     </div>
   </section>
 
+  <section id="emulador">
+    <h2 data-i18n="emu.title">Desde un PC con Ryujinx</h2>
+    <p class="sub" data-i18n="emu.sub">Juega con las consolas en los mismos grupos, sin instalar nada más. Necesitas una versión de Ryujinx con el modo multijugador LAN Play.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h3 data-i18n="e1.t">Abre la red</h3><p data-i18n="e1.p">En Ryujinx: Opciones → Configuración → Red.</p></div>
+      <div class="step"><div class="n">2</div><h3 data-i18n="e2.t">Elige LAN Play</h3><p data-i18n-html="e2.p">Modo: <b>LAN Play</b>. Servidor LAN Play: <code>129.38.114.182</code>. IP virtual: automática.</p></div>
+      <div class="step"><div class="n">3</div><h3 data-i18n="e3.t">Juega en modo local</h3><p data-i18n="e3.p">Busca grupo y verás los de las consolas; el grupo que crees en Ryujinx también les aparece a ellas.</p></div>
+    </div>
+  </section>
+
   <section>
     <div class="features">
-      <div class="feature"><h3 data-i18n="f1.t">Cualquier juego con modo local</h3><p data-i18n="f1.p">Funciona con los juegos que tienen inalámbrico local, sin parches por juego.</p></div>
+      <div class="feature"><h3 data-i18n="f1.t">Cualquier juego con modo local</h3><p data-i18n="f1.p">Funciona con los juegos que tienen inalámbrico local, sin parches por juego. Si se va quien creó el grupo, la partida termina; si se va otro, sigue.</p></div>
       <div class="feature"><h3 data-i18n="f2.t">Salas privadas</h3><p data-i18n="f2.p">¿Solo con un amigo? Crea una sala en la app y pásale el código de 6 letras.</p></div>
       <div class="feature"><h3 data-i18n="f3.t">Tu privacidad</h3><p data-i18n="f3.p">Los demás ven un apodo, nunca tu nombre de usuario ni tu IP. Sin cuentas.</p></div>
       <div class="feature"><h3 data-i18n="f4.t">Código abierto</h3><p data-i18n="f4.p">Todo está en GitHub, incluido el servidor, por si quieres montar el tuyo.</p></div>
@@ -167,12 +178,12 @@
 <script>
 const T = {
   en: {
-    'nav.groups': 'Open groups', 'nav.start': 'Get started', beta: 'Public beta',
+    'nav.groups': 'Open groups', 'nav.start': 'Get started', 'nav.emu': 'From a PC', beta: 'Public beta',
     'hero.title': 'Your local multiplayer, <em>online</em>.',
-    'hero.text': "Your games' local wireless mode, with people anywhere. No PC, no setup, no IPs to type: create a group in the game and the world can join.",
+    'hero.text': "Your games' local wireless mode, with people anywhere. No PC, no setup, no IPs to type: create a group in the game and the world can join. From the console or from a PC with Ryujinx.",
     'cta.download': 'Download', 'cta.how': 'How it works',
     'status.loading': 'Connecting to the network…', 'status.ok': 'Network online', 'status.off': 'Network unreachable right now',
-    'num.online': 'consoles online', 'num.groups': 'open groups', 'num.players': 'players in groups',
+    'num.online': 'consoles & PCs online', 'num.groups': 'open groups', 'num.players': 'players in groups',
     'groups.title': 'Open groups right now', 'groups.sub': "Go to the game's local wireless mode and search for groups: they'll show up there. Updates by itself.",
     'groups.empty': '<b>No open groups right now.</b> Be the first: create a group in a game\'s local wireless mode and it will show up here for everyone.',
     'groups.host': "{host}'s group", 'games.title': 'Being played', 'games.groups': '{n} groups', 'games.group': '1 group',
@@ -180,7 +191,11 @@ const T = {
     's1.t': 'Install', 's1.p': 'Download the zip and unzip it to the root of the SD card. Restart the console.',
     's2.t': 'Open the game', 's2.p': 'Go to its local wireless mode, as if you were playing with someone next to you.',
     's3.t': 'Create or join', 's3.p': 'Create a group and everyone will see it, or search for an open one and join.',
-    'f1.t': 'Any game with local play', 'f1.p': 'Works with games that have local wireless, with no per-game patches.',
+    'emu.title': 'From a PC with Ryujinx', 'emu.sub': 'Play with consoles in the same groups, with nothing else to install. You need a Ryujinx version with the LAN Play multiplayer mode.',
+    'e1.t': 'Open the network settings', 'e1.p': 'In Ryujinx: Options → Settings → Network.',
+    'e2.t': 'Pick LAN Play', 'e2.p': 'Mode: <b>LAN Play</b>. LAN Play server: <code>129.38.114.182</code>. Virtual IP: automatic.',
+    'e3.t': 'Play in local mode', 'e3.p': "Search for groups and you'll see the consoles' ones; a group you create in Ryujinx shows up for them too.",
+    'f1.t': 'Any game with local play', 'f1.p': 'Works with games that have local wireless, with no per-game patches. If the player who created the group leaves, the match ends; if anyone else leaves, it goes on.',
     'f2.t': 'Private rooms', 'f2.p': 'Just you and a friend? Create a room in the app and share the 6-letter code.',
     'f3.t': 'Your privacy', 'f3.p': 'Others see a nickname, never your user name or your IP. No accounts.',
     'f4.t': 'Open source', 'f4.p': 'Everything is on GitHub, the server included, in case you want to host your own.',

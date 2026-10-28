@@ -5,6 +5,7 @@
  * the GNU General Public License, version 2, as published by the Free Software Foundation.
  */
 #include "lanywhere_relay.hpp"
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -49,8 +50,10 @@ namespace ams::mitm::lanywhere {
         u64 g_game_id;
         u8 g_my_index;
         u32 g_my_ip, g_token;
+        std::atomic<u32> g_net_ip;  // copia de g_my_ip sin cerrojo: la consulta bsd en cada envío
         Member g_members[MaxMembers];
         u32 g_sent, g_received;
+        u32 g_send_retries, g_send_failures;  // envíos al servidor con el búfer de salida lleno
         int g_tcp = -1, g_udp = -1;
         sockaddr_in g_server;
         os::Tick g_last_keepalive;
@@ -182,7 +185,19 @@ namespace ams::mitm::lanywhere {
             buf[4] = type;
             put32(buf + 5, token);
             if (size) std::memcpy(buf + 9, body, size);
-            ::sendto(fd, buf, 9 + size, 0, reinterpret_cast<const sockaddr *>(std::addressof(g_server)), sizeof(g_server));
+            // El juego envía a ráfagas (los datos de la carrera, por ejemplo): si el búfer de salida está lleno, se
+            // espera un poco en lugar de perder el paquete.
+            for (int tries = 0;; tries++) {
+                if (::sendto(fd, buf, 9 + size, 0, reinterpret_cast<const sockaddr *>(std::addressof(g_server)), sizeof(g_server)) >= 0) return;
+                const int err = errno;
+                if ((err == ENOBUFS || err == EAGAIN || err == EWOULDBLOCK) && tries < 40) {
+                    if (++g_send_retries % 200 == 1) Log("udp: búfer de salida lleno, reintentando (%u veces)", g_send_retries);
+                    svcSleepThread(500'000);
+                    continue;
+                }
+                if (++g_send_failures % 50 == 1) Log("udp: envío perdido (%u en total), errno %d", g_send_failures, err);
+                return;
+            }
         }
 
         void UdpSend(u8 type, const void *body, size_t size) {
@@ -335,6 +350,7 @@ namespace ams::mitm::lanywhere {
             g_code[CodeLength] = '\0';
             g_my_index = reply[6];
             g_my_ip = le32(reply + 7);
+            g_net_ip = g_my_ip;
             g_token = le32(reply + 11);
             g_game_id = le64(reply + 15);
             bool before[MaxMembers];
@@ -511,18 +527,23 @@ namespace ams::mitm::lanywhere {
         util::Strlcpy(out, g_nick, size);
     }
 
+    // Último byte de CREATE y JOIN: lo que entiende esta versión (1 = salas en la red 10.13.0.0/16).
+    constexpr u8 Features = 1;
+
     Result CreateRoom(u64 game_id) {
-        u8 body[8 + NickLength] = {};
+        u8 body[8 + NickLength + 1] = {};
         put64(body, game_id);
         Nickname(reinterpret_cast<char *>(body + 8), NickLength);
+        body[8 + NickLength] = Features;
         R_RETURN(Enter(T_Create, body, sizeof(body)));
     }
 
     Result JoinRoom(const char *code, u64 game_id) {
-        u8 body[CodeLength + NickLength + 8] = {};
+        u8 body[CodeLength + NickLength + 8 + 1] = {};
         std::memcpy(body, code, std::min(std::strlen(code), CodeLength));
         Nickname(reinterpret_cast<char *>(body + CodeLength), NickLength);
         put64(body + CodeLength + NickLength, game_id);
+        body[CodeLength + NickLength + 8] = Features;
         R_RETURN(Enter(T_Join, body, sizeof(body)));
     }
 
@@ -580,12 +601,30 @@ namespace ams::mitm::lanywhere {
         return g_my_ip;
     }
 
+    u32 Netmask() {
+        return (g_net_ip.load() & 0xFFFF0000u) == LanPlayNet ? 0xFFFF0000u : 0xFFFFFF00u;
+    }
+
+    bool IsVirtual(u32 ip) {
+        const u32 mine = g_net_ip.load(), mask = Netmask();
+        return (ip & mask) == (mine ? mine & mask : VirtualNet) || ip == 0xFFFFFFFFu;
+    }
+
+    int MemberOfIp(u32 ip) {
+        std::scoped_lock lk(g_lock);
+        for (const Member &m : g_members) {
+            if (m.present && m.ip == ip) return m.index;
+        }
+        return -1;
+    }
+
     void SendData(u32 dst_ip, u16 src_port, u16 dst_port, const void *data, size_t size) {
         if (size > MaxPayload) {
             return;  // el juego no envía más que el MTU; por si acaso no se fragmenta
         }
         u8 body[8 + MaxPayload];
-        put32(body, dst_ip == 0xFFFFFFFFu ? (VirtualNet | 0xFF) : dst_ip);
+        const u32 mask = Netmask();
+        put32(body, dst_ip == 0xFFFFFFFFu ? ((g_net_ip.load() & mask) | ~mask) : dst_ip);
         put16(body + 4, src_port);
         put16(body + 6, dst_port);
         std::memcpy(body + 8, data, size);
@@ -747,6 +786,14 @@ namespace ams::mitm::lanywhere {
             return static_cast<ssize_t>(n);
         }
         return -1;
+    }
+
+    bool HasData(u16 port) {
+        std::scoped_lock lk(g_queue_lock);
+        for (size_t i = 0; i < g_queue_count; i++) {
+            if (g_queue[(g_queue_head + i) % QueueSize].dst_port == port) return true;
+        }
+        return false;
     }
 
 }

@@ -2,8 +2,8 @@
 
 **Español** · [English](README.md) · 🌐 **[lanywhere.online](https://lanywhere.online)**: grupos abiertos ahora
 
-> 🧪 **Beta: buscamos probadores.** Todo funciona con una sola consola, pero falta probar partidas completas entre
-> consolas reales en casas distintas. Si lo pruebas, cuéntanos cómo fue (aunque haya fallado) con un
+> 🧪 **Beta: buscamos probadores.** Ya hay partidas completas entre una consola y dos emuladores, pero falta probar
+> entre consolas reales en casas distintas. Si lo pruebas, cuéntanos cómo fue (aunque haya fallado) con un
 > [informe de prueba](../../issues/new?template=test-report.yml). Los juegos probados hasta ahora están en el
 > [issue de la beta](../../issues?q=label%3Abeta).
 
@@ -14,7 +14,8 @@ inalámbrico local** de tus juegos a internet: sin PC, sin configurar nada y sin
 
 Creas un grupo en el juego como siempre ("inalámbrico local" → "crear grupo") y jugadores de todo el mundo pueden
 unirse; buscas grupo y ves los que hay abiertos en internet. Para jugar solo con un amigo, una sala privada con un
-código de 6 letras.
+código de 6 letras. También se puede jugar **desde un PC con el emulador Ryujinx**, en los mismos grupos que las
+consolas.
 
 > Proyecto independiente y sin ánimo de lucro, sin relación con ningún fabricante de consolas ni de juegos. Solo
 > lleva por internet el tráfico de red del modo inalámbrico local: no modifica juegos, no usa claves ni cuentas, y no
@@ -68,13 +69,31 @@ Mientras estás en una sala privada, tus grupos solo los ve esa sala.
 
 ![Sala privada con su código](docs/images/sala-privada.png)
 
+**Si se va quien creó el grupo, la partida se acaba para todos.** Es como funciona el modo local de los juegos: el
+anfitrión es la red del grupo. Si se va cualquier otro, los demás siguen. Conviene que cree el grupo quien tenga la
+conexión más estable.
+
+## Con un emulador (Ryujinx)
+
+Un PC con Ryujinx puede jugar con las consolas en los mismos grupos, sin instalar nada más:
+LANywhere habla el protocolo **LAN Play**. Hace falta una versión de Ryujinx con el modo multijugador "LAN Play".
+
+1. En Ryujinx: **Opciones → Configuración → Red**.
+2. **Modo:** `LAN Play`. **Servidor LAN Play:** `129.38.114.182`. **IP virtual:** automática. Deja marcado
+   "Conectar invitado a internet / modo LAN".
+3. Abre el juego y entra en su modo inalámbrico local: los grupos de las consolas aparecen al buscar, y el grupo que
+   crees en Ryujinx aparece en las consolas (y en [lanywhere.online](https://lanywhere.online)).
+
+Todos con el mismo juego y la misma versión, como entre consolas. Los emuladores no usan salas privadas: se ven en
+los grupos abiertos.
+
 ## Seguridad y privacidad
 
 - **Apodo, nunca tu nombre de usuario.** Los demás te ven con un apodo (uno al azar hasta que elijas el tuyo). El
   servidor filtra los apodos ofensivos.
 - ⚠️ **Dentro de la partida**, algunos juegos muestran el nombre del usuario de la consola, porque lo envía el propio
   juego. Para jugar con desconocidos, **crea en la consola un usuario con un apodo** y juega con él.
-- **Nadie ve tu IP.** Todo pasa por el servidor; los demás jugadores solo ven una IP virtual (10.114.0.x).
+- **Nadie ve tu IP.** Todo pasa por el servidor; los demás jugadores solo ven una IP virtual (10.13.x.x).
 - **Sin chat**: los juegos en modo local no tienen, y LANywhere no añade ninguno.
 - **Mantén los juegos actualizados.** Con grupos abiertos recibes datos de consolas desconocidas, como en cualquier
   juego en línea; algunos juegos antiguos tenían fallos de red graves que ya se corrigieron en sus actualizaciones.
@@ -84,13 +103,16 @@ Mientras estás en una sala privada, tus grupos solo los ve esa sala.
 
 ```
  juego ──ldn──▶ sysmodule (fork de ldn_mitm) ──TCP/UDP 11460──▶ servidor de salas ◀── otras consolas
+                                                                       ▲
+                                              Ryujinx ──LAN Play, UDP 11451──┘
 ```
 
 - **Sysmodule** (`console/`): un fork de [ldn_mitm](https://github.com/spacemeowx2/ldn_mitm). Sustituye el servicio
   `ldn` (inalámbrico local) del sistema; los grupos se publican, buscan y unen a través del servidor, y los paquetes
   del juego hacia la red virtual de la sala se reenvían por él.
 - **Servidor** (`server/relay/server.js`): Node.js sin dependencias. Salas de hasta 8 consolas, grupos abiertos,
-  reconexión automática si se corta el Wi-Fi, límites contra abusos y un tope de tráfico mensual.
+  reconexión automática si se corta el Wi-Fi, límites contra abusos y un tope de tráfico mensual. Incluye una
+  pasarela LAN Play (`lanplay.js`) para los emuladores.
 - **App** (`app/`): el panel LANywhere.
 
 El protocolo está en [docs/PROTOCOL.md](docs/PROTOCOL.md).
@@ -111,7 +133,12 @@ o equivalente. Requisitos mínimos:
 
 - 1 vCPU y 1 GB de RAM (el servidor usa muy poco: unas decenas de MB).
 - Ubuntu 22.04 o 24.04 (u otra distribución con Node.js 18 o más nuevo).
-- IP pública y los puertos **TCP y UDP 11460** abiertos en el cortafuegos del proveedor.
+- IP pública y los puertos **TCP y UDP 11460** abiertos en el cortafuegos del proveedor (y **UDP 11451** para los
+  emuladores).
+- ⚠️ **Fragmentos UDP:** los paquetes grandes del juego viajan fragmentados y solo el primer fragmento lleva el
+  puerto. Si el cortafuegos del proveedor filtra UDP por puerto, descarta el resto y algunos juegos se quedan
+  esperando (por ejemplo, al elegir pista). Permite **UDP sin filtrar por puerto** en el cortafuegos del proveedor: el
+  de la máquina (`deploy-relay.ps1` lo configura) sigue filtrando por puerto después de reensamblar.
 - Lo que más cuenta es el **tráfico de salida**: todo el juego pasa por el servidor. Ajusta `LANYWHERE_CAP_GB` a lo que
   incluya tu plan para no llevarte sorpresas.
 
@@ -126,7 +153,8 @@ Para instalarlo como servicio en una Ubuntu (con acceso por SSH con clave):
 ```
 
 Instala Node.js si falta y deja el servidor como servicio systemd aislado (sin privilegios), con parches de seguridad
-automáticos. Recomendado: permitir SSH solo desde tu IP.
+automáticos. También desactiva el bit "no fragmentar" en UDP: en nubes con MTU interna grande (9000), un paquete con
+ese bit se pierde por internet. Recomendado: permitir SSH solo desde tu IP.
 
 ### Panel de actividad
 
@@ -156,7 +184,7 @@ make -C app                               # app → app/lanywhere.nro
 .\scripts\package.ps1 -Version 0.1.0     # dist\lanywhere-0.1.0.zip
 ```
 
-Pruebas del servidor: `node server/relay/test.js`. Para probar con una sola consola, `server/relay/fake-peer.js`
+Pruebas del servidor: `node server/relay/test.js` y `node server/relay/test-lanplay.js` (pasarela LAN Play). Para probar con una sola consola, `server/relay/fake-peer.js`
 simula a otro jugador (`--abiertas`: busca y se une a un grupo abierto; `--anfitrion`: publica un grupo).
 
 Para depurar en la consola: `sdmc:/lanywhere/relay.log` (siempre, hasta 256 KB) y, si existe el archivo

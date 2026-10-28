@@ -56,8 +56,9 @@ namespace ams {
             .tcp_tx_buf_max_size = 0x2000,
             .tcp_rx_buf_max_size = 0x2000,
 
-            .udp_tx_buf_size = 0x2000,
-            .udp_rx_buf_size = 0x2000,
+            // LANywhere: los paquetes del juego van por un solo socket UDP con el servidor, a ráfagas de ~1.4 KB.
+            .udp_tx_buf_size = 0x8000,
+            .udp_rx_buf_size = 0x8000,
 
             .sb_efficiency = 4,
 

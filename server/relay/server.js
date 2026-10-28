@@ -19,18 +19,23 @@ const crypto = require('crypto');
 
 const PORT = Number(process.argv[process.argv.indexOf('--port') + 1]) || 11460;
 const MAX_MEMBERS = 8;
-const MAX_PAYLOAD = 1400;
+const MAX_PAYLOAD = 1472;  // un datagrama UDP con MTU 1500, como en una LAN
 const IDLE_MS = 20000;
 const GRACE_MS = 60000;  // puesto guardado si se corta la conexión (al cambiar de red, la consola reconecta)
 const UDP_MAGIC = 0x594e414c;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const NET_BASE = (10 << 24) | (114 << 16);  // 10.114.0.0/24
+const NET_BASE = (10 << 24) | (114 << 16);  // 10.114.0.0/24: salas de consolas sin la red de LAN Play
+// Salas de clientes que la entienden (último byte de CREATE/JOIN, bit 0): la red de LAN Play, 10.13.0.0/16, con una
+// IP única en todo el servidor por miembro. Así un emulador (lanplay.js) y las consolas ven las mismas direcciones,
+// también las que el juego lleva dentro de sus paquetes.
+const NET13 = (10 << 24) | (13 << 16);
+const F_NET13 = 1;
 // Grupo de ldn publicado (NetworkInfo de ldn_mitm): id del juego en 0, máximo de jugadores en 0x66, jugadores en
 // 0x67, 8 nodos de 0x40 desde 0x68 (IP en +0, conectado en +11, nombre de 33 bytes en +12).
 const NETWORK_INFO_SIZE = 0x480;
 const NODES = 0x68, NODE_SIZE = 0x40;
 const MAX_GROUPS = 6;  // por respuesta a FIND
-const BROADCASTS = new Set([(NET_BASE | 255) >>> 0, 0xffffffff]);
+const BROADCASTS = new Set([(NET_BASE | 255) >>> 0, (NET13 | 0xffff) >>> 0, 0xffffffff]);
 
 // Límites contra abusos (por IP pública: una casa con varias consolas comparte IP).
 const LIMITS = {
@@ -47,11 +52,12 @@ const UDP_OVERHEAD = 28, TCP_OVERHEAD = 52;  // cabeceras IP/UDP e IP/TCP: tambi
 const T = { CREATE: 0x01, JOIN: 0x02, LEAVE: 0x03, RELAY: 0x04, PING: 0x05, RESUME: 0x06, PUBLISH: 0x07, FIND: 0x08,
             ROOM: 0x81, MEMBER_JOINED: 0x82, MEMBER_LEFT: 0x83, RELAY_IN: 0x84, ERROR: 0x85, PONG: 0x86, GROUPS: 0x87 };
 const U = { REGISTER: 0x01, DATA: 0x02, KEEPALIVE: 0x03, REGISTERED: 0x81, DATA_IN: 0x82 };
-const E = { NO_ROOM: 1, FULL: 2, OTHER_GAME: 3, BAD_REQUEST: 4, NO_SEAT: 5, PAUSED: 6, BUSY: 7 };
+const E = { NO_ROOM: 1, FULL: 2, OTHER_GAME: 3, BAD_REQUEST: 4, NO_SEAT: 5, PAUSED: 6, BUSY: 7, UPDATE: 8 };
 const LDN_SCAN_RESP = 2, LDN_SYNC = 4;
 
 const rooms = new Map();    // código → { code, gameId, members: Array(8), published }
 const byToken = new Map();  // token → miembro
+const byIp13 = new Map();   // IP 10.13 → miembro (salas en la red de LAN Play)
 
 // Panel de actividad (stats.js): hasta que arranca, no cuenta nada.
 let stats = { count() {}, event() {}, noteSearch() {}, save() {} };
@@ -60,6 +66,16 @@ const log = (...a) => {
     stats.event(a.join(' '));
 };
 const ipOf = (index) => (NET_BASE | (index + 1)) >>> 0;
+// Una IP 10.13 libre: ni de otro miembro ni de un emulador de LAN Play (10.13.37.1 y 10.13.254.254 son reservadas).
+function allocIp13() {
+    for (let n = 0; n < 1000; n++) {
+        const ip = (NET13 | ((1 + crypto.randomInt(254)) << 8) | (1 + crypto.randomInt(254))) >>> 0;
+        if (ip === ((NET13 | 0x2501) >>> 0) || ip === ((NET13 | 0xfefe) >>> 0)) continue;
+        if (byIp13.has(ip) || (lanplay && lanplay.taken(ip))) continue;
+        return ip;
+    }
+    return 0;
+}
 const ipStr = (ip) => [ip >>> 24, (ip >>> 16) & 255, (ip >>> 8) & 255, ip & 255].join('.');
 const plainIp = (a) => (a || '').replace(/^::ffff:/, '');
 
@@ -234,11 +250,15 @@ function others(room, member) {
 function join(socket, room, nickname) {
     const index = room.members.findIndex((m) => !m);
     if (index < 0) return sendError(socket, E.FULL, 'la sala está llena');
+    // Un miembro virtual (emulador) conserva su IP de LAN Play.
+    const ip = !room.net13 ? ipOf(index) : socket.virtual ? socket.ip13 : allocIp13();
+    if (!ip || (room.net13 && byIp13.has(ip))) return sendError(socket, E.BUSY, 'no hay direcciones libres; prueba en un momento');
     const token = newToken();
-    const member = { index, ip: ipOf(index), nick: cleanNick(nickname, token), token, socket, room, udp: null, grace: null,
+    const member = { index, ip, nick: cleanNick(nickname, token), token, socket, room, udp: null, grace: null,
                      publicIp: plainIp(socket.remoteAddress) };
     room.members[index] = member;
     byToken.set(member.token, member);
+    if (room.net13) byIp13.set(ip, member);
     socket.member = member;
     sendRoom(member);
     for (const m of others(room, member)) send(m.socket, T.MEMBER_JOINED, memberBuf(member));
@@ -273,6 +293,7 @@ function leave(member, why) {
     if (!room || room.members[member.index] !== member) return;
     room.members[member.index] = null;
     byToken.delete(member.token);
+    if (byIp13.get(member.ip) === member) byIp13.delete(member.ip);
     clearTimeout(member.grace);
     if (member.socket) member.socket.member = null;
     if (room.published && room.published.member === member) room.published = null;
@@ -294,7 +315,9 @@ function onFrame(socket, type, body) {
             if (member || body.length < 8 + 32) return sendError(socket, E.BAD_REQUEST, 'CREATE no válido');
             if (!allowed(ip, 'create') || rooms.size >= LIMITS.roomsTotal)
                 return sendError(socket, E.BUSY, 'demasiadas salas; prueba en un momento');
-            const room = { code: newCode(), gameId: body.readBigUInt64LE(0), members: new Array(MAX_MEMBERS).fill(null), published: null };
+            const features = body.length > 40 ? body[40] : 0;
+            const room = { code: newCode(), gameId: body.readBigUInt64LE(0), members: new Array(MAX_MEMBERS).fill(null), published: null,
+                           net13: !!(features & F_NET13) };
             rooms.set(room.code, room);
             stats.count('roomsCreated');
             log(`sala ${room.code} creada (juego ${room.gameId.toString(16)})`);
@@ -307,6 +330,9 @@ function onFrame(socket, type, body) {
             if (!room) return sendError(socket, E.NO_ROOM, 'la sala no existe');
             const gameId = body.length >= 6 + 32 + 8 ? body.readBigUInt64LE(38) : 0n;
             if (gameId && gameId !== room.gameId) return sendError(socket, E.OTHER_GAME, 'la sala es de otro juego');
+            const features = body.length > 46 ? body[46] : 0;
+            if (room.net13 && !(features & F_NET13))
+                return sendError(socket, E.UPDATE, 'actualiza LANywhere para entrar en esta sala');
             return join(socket, room, nick(body.subarray(6, 38)));
         }
         case T.RESUME: {
@@ -492,9 +518,10 @@ function publicGroups() {
 }
 require('./public').create({ stateDir: path.dirname(STATE_FILE), port: PUBLIC_PORT, snapshot, groups: publicGroups });
 // Pasarela LAN Play (Ryujinx): miembros virtuales que usan las mismas salas.
+const memberAt = (ip) => byIp13.get(ip) || null;
 const LANPLAY_PORT = process.env.LANYWHERE_LANPLAY_PORT === undefined ? 11451 : Number(process.env.LANYWHERE_LANPLAY_PORT);
 const lanplay = require('./lanplay').create({
-    port: LANPLAY_PORT, log, rooms, count, paused: () => paused,
+    port: LANPLAY_PORT, log, rooms, count, paused: () => paused, memberAt,
     frame: (socket, type, body) => onFrame(socket, type, body),
     forwardData,
 });

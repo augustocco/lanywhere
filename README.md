@@ -2,8 +2,8 @@
 
 [Español](README.es.md) · **English** · 🌐 **[lanywhere.online](https://lanywhere.online)**: open groups right now
 
-> 🧪 **Beta: we are looking for testers.** Everything works with a single console, but we still need full matches
-> between real consoles in different homes. If you try it, tell us how it went (even if it failed) with a
+> 🧪 **Beta: we are looking for testers.** Full matches already work between a console and two emulators, but we
+> still need to test between real consoles in different homes. If you try it, tell us how it went (even if it failed) with a
 > [test report](../../issues/new?template=test-report.yml). Tested games so far are listed in the
 > [beta issue](../../issues?q=label%3Abeta).
 
@@ -14,7 +14,7 @@ games to the internet: no PC, no setup, no IPs to type.
 
 Create a group in the game as usual ("local wireless" → "create group") and players anywhere in the world can join;
 search for groups and you'll see the ones open online. To play only with a friend, use a private room with a 6-letter
-code.
+code. You can also play **from a PC with the Ryujinx emulator**, in the same groups as the consoles.
 
 > Independent, non-profit project, not affiliated with any console or game maker. It only carries the network traffic
 > of the local wireless mode over the internet: it does not modify games, does not use keys or accounts, and does not
@@ -69,13 +69,31 @@ While you are in a private room, your groups are only visible to that room.
 
 ![Private room with its code](docs/images/sala-privada.png)
 
+**If the player who created the group leaves, the match ends for everyone.** That's how games' local mode works: the
+host is the group's network. If anyone else leaves, the rest keep playing. The player with the most stable connection
+should create the group.
+
+## With an emulator (Ryujinx)
+
+A PC running Ryujinx can play with consoles in the same groups, with nothing else to install: LANywhere speaks the
+**LAN Play** protocol. You need a Ryujinx version with the "LAN Play" multiplayer mode.
+
+1. In Ryujinx: **Options → Settings → Network**.
+2. **Mode:** `LAN Play`. **LAN Play server:** `129.38.114.182`. **Virtual IP:** automatic. Keep "Enable guest
+   internet access / LAN mode" checked.
+3. Open the game and go to its local wireless mode: the consoles' groups show up when you search, and a group you
+   create in Ryujinx shows up on the consoles (and on [lanywhere.online](https://lanywhere.online)).
+
+Everyone needs the same game and the same version, as between consoles. Emulators don't use private rooms: they meet
+in open groups.
+
 ## Safety and privacy
 
 - **A nickname, never your user name.** Other players see you by a nickname (a random one until you pick your own).
   The server filters offensive nicknames.
 - ⚠️ **Inside the match**, some games show the console's user name, because the game itself sends it. To play with
   strangers, **create a user on the console with a nickname** and play with it.
-- **Nobody sees your IP.** Everything goes through the server; other players only see a virtual IP (10.114.0.x).
+- **Nobody sees your IP.** Everything goes through the server; other players only see a virtual IP (10.13.x.x).
 - **No chat**: local wireless games don't have one, and LANywhere doesn't add any.
 - **Keep your games updated.** With open groups you receive data from unknown consoles, like in any online game; some
   old games had serious network bugs that were fixed in their updates.
@@ -85,13 +103,16 @@ While you are in a private room, your groups are only visible to that room.
 
 ```
  game ──ldn──▶ sysmodule (ldn_mitm fork) ──TCP/UDP 11460──▶ room server ◀── other consoles
+                                                                  ▲
+                                         Ryujinx ──LAN Play, UDP 11451──┘
 ```
 
 - **Sysmodule** (`console/`): a fork of [ldn_mitm](https://github.com/spacemeowx2/ldn_mitm). It replaces the system's
   `ldn` (local wireless) service; groups are published, found and joined through the server, and the game's packets
   for the room's virtual network are relayed by it.
 - **Server** (`server/relay/server.js`): Node.js, no dependencies. Rooms of up to 8 consoles, open groups, automatic
-  reconnection when Wi-Fi drops, abuse limits and a monthly traffic cap.
+  reconnection when Wi-Fi drops, abuse limits and a monthly traffic cap. It includes a LAN Play gateway
+  (`lanplay.js`) for emulators.
 - **App** (`app/`): the LANywhere panel.
 
 The protocol is described (in Spanish) in [docs/PROTOCOL.md](docs/PROTOCOL.md).
@@ -112,7 +133,11 @@ Minimum requirements:
 
 - 1 vCPU and 1 GB of RAM (the server itself uses a few tens of MB).
 - Ubuntu 22.04 or 24.04 (or another distribution with Node.js 18 or newer).
-- A public IP and **TCP and UDP port 11460** open in the provider's firewall.
+- A public IP and **TCP and UDP port 11460** open in the provider's firewall (plus **UDP 11451** for emulators).
+- ⚠️ **UDP fragments:** large game packets travel fragmented and only the first fragment carries the port. If the
+  provider's firewall filters UDP by port, it drops the rest and some games get stuck waiting (for example, when
+  picking a track). Allow **UDP without port filtering** in the provider's firewall: the machine's own firewall
+  (set up by `deploy-relay.ps1`) still filters by port after reassembly.
 - What matters most is **outbound traffic**: all game traffic goes through the server. Set `LANYWHERE_CAP_GB` to what
   your plan includes to avoid surprises.
 
@@ -127,7 +152,8 @@ To install it as a service on Ubuntu (with SSH key access):
 ```
 
 It installs Node.js if missing and sets the server up as a sandboxed systemd service (no privileges), with automatic
-security updates. Recommended: allow SSH only from your IP.
+security updates. It also turns off the "don't fragment" bit for UDP: on clouds with a large internal MTU (9000), a
+packet with that bit set gets lost on the internet. Recommended: allow SSH only from your IP.
 
 ### Activity dashboard
 
@@ -156,7 +182,7 @@ make -C app                               # app → app/lanywhere.nro
 .\scripts\package.ps1 -Version 0.1.0     # dist\lanywhere-0.1.0.zip
 ```
 
-Server tests: `node server/relay/test.js`. To test with a single console, `server/relay/fake-peer.js` simulates another
+Server tests: `node server/relay/test.js` and `node server/relay/test-lanplay.js` (LAN Play gateway). To test with a single console, `server/relay/fake-peer.js` simulates another
 player (`--abiertas`: finds and joins an open group; `--anfitrion`: publishes a group).
 
 Debugging on the console: `sdmc:/lanywhere/relay.log` (always, up to 256 KB) and, if the file `sdmc:/lanywhere/debug.flag`
