@@ -1,5 +1,5 @@
 # Instala o actualiza el servidor de salas (server/relay/server.js) en la VM como servicio systemd
-# "lanywhere" (TCP/UDP 11460), con su propio usuario sin privilegios.
+# "lanywhere" (TCP/UDP 11460, LAN Play en UDP 11451), con su propio usuario sin privilegios.
 #
 #   .\scripts\deploy-relay.ps1 -VmHost 1.2.3.4 -Key $HOME\.ssh\mi_clave
 param(
@@ -12,7 +12,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $ssh = @('-i', $Key, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new')
 
 # El servidor y su panel de actividad (stats.js + dashboard.html, solo en 127.0.0.1; ver scripts/panel.ps1).
-$files = 'server.js', 'stats.js', 'public.js', 'dashboard.html'
+$files = 'server.js', 'stats.js', 'public.js', 'lanplay.js', 'dashboard.html'
 & scp @ssh ($files | ForEach-Object { Join-Path $root "server\relay\$_" }) "${User}@${VmHost}:/tmp/"
 if ($LASTEXITCODE -ne 0) { throw 'scp falló' }
 
@@ -25,7 +25,7 @@ if ! command -v node >/dev/null 2>&1 || ! command -v netfilter-persistent >/dev/
 fi
 sudo id lanywhere >/dev/null 2>&1 || sudo useradd --system --home /opt/lanywhere --shell /usr/sbin/nologin lanywhere
 sudo install -d -o lanywhere -g lanywhere /opt/lanywhere
-for f in server.js stats.js public.js dashboard.html; do
+for f in server.js stats.js public.js lanplay.js dashboard.html; do
   sudo install -o lanywhere -g lanywhere -m 0644 "/tmp/$f" "/opt/lanywhere/$f"
   rm -f "/tmp/$f"
 done
@@ -74,10 +74,11 @@ UNIT
 # Si la imagen trae reglas de iptables que solo dejan pasar SSH, abrir 11460 una vez (si no, no estorba).
 sudo iptables -C INPUT -p udp --dport 11460 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 5 -p udp --dport 11460 -j ACCEPT
 sudo iptables -C INPUT -p tcp --dport 11460 -m state --state NEW -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 5 -p tcp --dport 11460 -m state --state NEW -j ACCEPT
-# El lan-play del principio ya no se usa: fuera el servicio y su puerto.
+# Un lan-play antiguo (servicio aparte) no debe ocupar el 11451: ahí va la pasarela LAN Play de este servidor.
 if systemctl list-unit-files lan-play.service >/dev/null 2>&1; then sudo systemctl disable --now lan-play >/dev/null 2>&1 || true; fi
-while sudo iptables -C INPUT -p udp --dport 11451 -j ACCEPT 2>/dev/null; do sudo iptables -D INPUT -p udp --dport 11451 -j ACCEPT; done
 while sudo iptables -C INPUT -p tcp --dport 11451 -m state --state NEW -j ACCEPT 2>/dev/null; do sudo iptables -D INPUT -p tcp --dport 11451 -m state --state NEW -j ACCEPT; done
+# LAN Play (emuladores): UDP 11451.
+sudo iptables -C INPUT -p udp --dport 11451 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 5 -p udp --dport 11451 -j ACCEPT
 sudo netfilter-persistent save >/dev/null
 # Parches de seguridad de Ubuntu automáticos.
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unattended-upgrades >/dev/null

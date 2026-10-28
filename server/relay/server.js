@@ -211,8 +211,11 @@ function memberBuf(m) {
     return Buffer.concat([b, nickBuf(m.nick)]);
 }
 
+// Un "socket" puede ser una conexión TCP de una consola o un miembro virtual (un Ryujinx entrando por LAN Play, ver
+// lanplay.js): ese recibe las tramas por deliver() en lugar de por la red.
 function send(socket, type, body = Buffer.alloc(0)) {
     if (!socket || socket.destroyed) return;
+    if (socket.virtual) return socket.deliver(type, body);
     const head = Buffer.alloc(3);
     head.writeUInt16LE(body.length + 1, 0);
     head.writeUInt8(type, 2);
@@ -430,18 +433,25 @@ udp.on('message', (msg, rinfo) => {
         reply.writeUInt8(U.REGISTERED, 4);
         udpSend(reply, rinfo.port, rinfo.address);
     } else if (type === U.DATA && !paused && msg.length >= 17 && msg.length - 17 <= MAX_PAYLOAD) {
-        const dst = msg.readUInt32LE(9);
-        const out = Buffer.alloc(msg.length - 17 + 13);
-        out.writeUInt32LE(UDP_MAGIC, 0);
-        out.writeUInt8(U.DATA_IN, 4);
-        out.writeUInt32LE(member.ip, 5);
-        msg.copy(out, 9, 13);  // puertos origen/destino y carga
-        for (const m of others(member.room, member)) {
-            if (!m.udp || !(BROADCASTS.has(dst) || m.ip === dst)) continue;
-            udpSend(out, m.udp.port, m.udp.address);
-        }
+        forwardData(member, msg.readUInt32LE(9), msg.subarray(13));
     }
 });
+
+// Paquete del juego de un miembro hacia otro de su sala (o a todos si dst es broadcast). ports_payload: puerto
+// origen (u16) · puerto destino (u16) · carga.
+function forwardData(member, dst, portsPayload) {
+    if (paused || !member.room || portsPayload.length < 4 || portsPayload.length - 4 > MAX_PAYLOAD) return;
+    const out = Buffer.alloc(portsPayload.length + 9);
+    out.writeUInt32LE(UDP_MAGIC, 0);
+    out.writeUInt8(U.DATA_IN, 4);
+    out.writeUInt32LE(member.ip, 5);
+    portsPayload.copy(out, 9);
+    for (const m of others(member.room, member)) {
+        if (!(BROADCASTS.has(dst) || m.ip === dst)) continue;
+        if (m.socket && m.socket.virtual) m.socket.data(member, dst, portsPayload);
+        else if (m.udp) udpSend(out, m.udp.port, m.udp.address);
+    }
+}
 
 loadTraffic();
 
@@ -481,6 +491,13 @@ function publicGroups() {
     return out.sort((a, b) => b.players - a.players).slice(0, 50);
 }
 require('./public').create({ stateDir: path.dirname(STATE_FILE), port: PUBLIC_PORT, snapshot, groups: publicGroups });
+// Pasarela LAN Play (Ryujinx): miembros virtuales que usan las mismas salas.
+const LANPLAY_PORT = process.env.LANYWHERE_LANPLAY_PORT === undefined ? 11451 : Number(process.env.LANYWHERE_LANPLAY_PORT);
+const lanplay = require('./lanplay').create({
+    port: LANPLAY_PORT, log, rooms, count, paused: () => paused,
+    frame: (socket, type, body) => onFrame(socket, type, body),
+    forwardData,
+});
 stats = require('./stats').create({ stateDir: path.dirname(STATE_FILE), port: STATS_PORT, snapshot, traffic,
                                     capBytes: CAP_BYTES, paused: () => paused });
 setInterval(() => { checkMonth(); saveTraffic(); }, 60000).unref();
@@ -489,4 +506,4 @@ for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { saveTraffic(); 
 tcp.listen(PORT, () => log(`control TCP en ${PORT}; tráfico del mes ${(traffic.bytes / 1e9).toFixed(2)} GB de ${CAP_BYTES / 1e9} GB`));
 udp.bind(PORT, () => log(`datos UDP en ${PORT}`));
 
-module.exports = { rooms, cleanNick };
+module.exports = { rooms, cleanNick, lanplay };
